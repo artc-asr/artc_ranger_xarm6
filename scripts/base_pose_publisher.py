@@ -67,6 +67,21 @@ class BasePosePublisher(Node):
         # kept as 'robotnik_simple' on purpose -- see that file's header).
         self.declare_parameter('gz_world', 'robotnik_simple')
         self.declare_parameter('gz_entity_name', 'robot_a')
+        # Hard safety clamp: this is a *kinematic* teleport, not physics, so
+        # it has no collision awareness of its own -- confirmed the hard way
+        # (see docs/initial_position_ik_notes.md): a whole-body-QP tracking
+        # instability commanded the base toward the wall, and this node
+        # obediently teleported the chassis to x=3.045 -- *inside* the wall
+        # (collision box spans x=2.85..3.15) -- with no physics step in
+        # between to stop it. Once embedded, ODE's stiff contact response
+        # to that overlap spiked to multi-million-newton force readings
+        # every subsequent tick, corrupting the whole force-control loop
+        # downstream. Wall face is at world x=2.85 (see
+        # tested_world.world); chassis half-length is ~0.25m (see
+        # ranger_mini_v3_description's collision box), so clamping the
+        # base origin's x below that leaves the chassis short of the wall
+        # face regardless of what the controller commands.
+        self.declare_parameter('max_x', 2.6)
         self.declare_parameter('tf_rate', 50.0)         # [Hz] cmd_vel integration + TF publish
         self.declare_parameter('gz_teleport_rate', 30.0)  # [Hz] Gazebo entity teleport (own thread)
         self.declare_parameter('cmd_vel_timeout', 0.5)    # [s] stale cmd_vel -> treat as zero
@@ -76,6 +91,7 @@ class BasePosePublisher(Node):
         self.gz_world = self.get_parameter('gz_world').value
         self.gz_entity_name = self.get_parameter('gz_entity_name').value
         self.cmd_vel_timeout = self.get_parameter('cmd_vel_timeout').value
+        self.max_x = self.get_parameter('max_x').value
 
         self.lock = threading.Lock()
         self.x = self.get_parameter('x').value
@@ -121,13 +137,14 @@ class BasePosePublisher(Node):
     # in-flight cmd_vel so a stale command can't immediately start
     # dragging the base away from the pose it was just teleported to.
     def _set_base_pose_cb(self, msg):
+        x = min(msg.x, self.max_x)
         with self.lock:
-            self.x, self.y, self.yaw = msg.x, msg.y, msg.theta
+            self.x, self.y, self.yaw = x, msg.y, msg.theta
             self.vx = self.vy = self.omega = 0.0
             self.last_cmd_vel_time = None
-        self._gz_set_pose(msg.x, msg.y, self.z, msg.theta)
+        self._gz_set_pose(x, msg.y, self.z, msg.theta)
         self._publish_tf()
-        self.get_logger().info(f'Base pose set: x={msg.x} y={msg.y} yaw={msg.theta}')
+        self.get_logger().info(f'Base pose set: x={x} y={msg.y} yaw={msg.theta}')
 
     # Integrate the latest cmd_vel by the real elapsed time since the last
     # tick (not the nominal timer period -- rclpy timers drift under load)
@@ -149,6 +166,12 @@ class BasePosePublisher(Node):
             self.x += (vx * c - vy * s) * dt
             self.y += (vx * s + vy * c) * dt
             self.yaw += omega * dt
+            # Safety clamp -- see max_x's declare_parameter comment. Clamping
+            # position (not velocity) is deliberate: it's a hard backstop
+            # against a bad command actually reaching the wall, not a
+            # smooth limit the controller is expected to respect.
+            if self.x > self.max_x:
+                self.x = self.max_x
 
         self._publish_tf()
 
