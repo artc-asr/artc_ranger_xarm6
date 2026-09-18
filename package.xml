@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>ranger_xarm6_description</name>
+  <version>0.0.0</version>
+  <description>
+    Combined description and bringup launch for the Ranger Mini 3.0 + xArm6
+    mobile manipulator. Joins ranger_mini_v3_description (base) and
+    xarm_description (arm) through a fixed mount transform that is currently
+    a placeholder -- no physical robot access yet to measure the real
+    base-to-arm offset. ranger_xarm6.launch.py supports both Gazebo Harmonic
+    simulation and real hardware (sim:=true/false), exposing the arm as an
+    'arm_velocity_controller' joint group so wbcc_controller (wbc.py) drives
+    it identically either way. Base drive (sim or real) is not wired yet.
+  </description>
+  <maintainer email="thinkminator1024@gmail.com">wbcc_mm maintainer</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>ranger_mini_v3_description</exec_depend>
+  <exec_depend>xarm_description</exec_depend>
+  <exec_depend>xarm_controller</exec_depend>
+  <exec_depend>xarm_api</exec_depend>
+  <exec_depend>uf_ros_lib</exec_depend>
+  <exec_depend>gz_ros2_control</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>velocity_controllers</exec_depend>
+  <!-- Real-hardware Ranger base driver (westonrobot/ranger_ros2, vendored at
+       src/westonrobot_ranger_ros2/). Only needed for sim:=false. -->
+  <exec_depend>ranger_bringup</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <!-- scripts/base_pose_publisher.py -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
+  <exec_depend>tf_transformations</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
