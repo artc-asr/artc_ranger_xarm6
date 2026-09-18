@@ -1,27 +1,55 @@
 #!/usr/bin/env python3
-"""Sole owner of Ranger's odom->base_link static transform.
+"""Kinematic base driver + sole TF owner for Ranger's odom->base_link.
 
-Replaces the plain tf2_ros static_transform_publisher CLI node
-ranger_xarm6.launch.py used to launch directly. That CLI tool only
-publishes once, from fixed launch args, and can't be told to republish --
-so when wbc_visualize.py's "Initial Position" button teleports the Gazebo
-entity, there was no way to update the TF to match without a second
-static-transform publisher fighting the first one over the same
-odom->base_link edge. Two publishers latching the same edge on
-/tf_static is a real race for any subscriber connecting after the
-teleport (tf2_echo, a restarted RViz, wbc.py started late): whichever
-publisher's retained history is redelivered last wins, non-deterministically.
+Ranger has no wired-up drive plugin (its wheels are passive -- see
+ranger_mini_v3.xacro's header comment) and no wired-up ros2_control
+command interface either (see the state-only <ros2_control> block in
+ranger_xarm6.urdf.xacro), so nothing has ever consumed wbc.py's cmd_vel
+or moved the base in simulation. This node is a simulation-only stand-in
+for that missing drive stage: it integrates cmd_vel kinematically (body-
+frame vx/vy/omega -> world-frame x/y/yaw, exactly the twist
+wbc_visualize.py's "Initial Position" button already teleports the base
+with, and the same twist wbc.py's _arbitrate_ranger_cmd_vel() already
+restricts to a mode Ranger's real swerve base can actually execute:
+Ackermann/spin OR crab, never both at once), then:
+  1. Publishes the result as the live odom->base_link TF (dynamic, not
+     static -- this is now a genuinely moving frame), so wbc.py's
+     TransformListener-based update_robot_state() sees it every tick.
+  2. Teleports the Gazebo entity to match, via the gz-transport Python
+     API directly (not the 'gz service' CLI subprocess wbc_visualize.py
+     used to shell out to for the one-off Initial Position teleport --
+     that's ~fine at one call per button click, far too slow to call
+     per control tick; the persistent gz.transport13.Node() API this
+     uses instead benchmarks at ~7ms/call, so it can keep up in its own
+     thread without blocking TF publishing).
 
-This node is the only thing that ever publishes odom->base_link for
-Ranger. wbc_visualize.py updates it by publishing to 'set_base_pose'
-instead of broadcasting the transform itself.
+This does NOT simulate real per-wheel swerve kinematics or physics
+(no wheel-ground contact, so no collision response e.g. at the wall) --
+it's a kinematic teleport, the same "trust the commanded twist" black-box
+that the real ranger_ros2 driver is from wbc.py's point of view, just
+without the internal wheel-level control. Good enough to let whole-body
+path-following actually move the base in sim; not a substitute for
+either real physics-based simulation or the real driver on hardware.
+
+Also still the sole owner of odom->base_link for the "Initial Position"
+button's teleport (set_base_pose topic) -- see git history on this file
+for why a second TF publisher for the same edge is a race, and why
+tf2_ros.StaticTransformBroadcaster can't be reused for updates (both
+moot now that this publishes a normal dynamic transform instead of a
+static one, but the single-owner principle still holds).
 """
+import math
+import threading
+import time
+
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
-from geometry_msgs.msg import Pose2D, TransformStamped
-from tf2_msgs.msg import TFMessage
+from geometry_msgs.msg import Pose2D, TransformStamped, Twist
+from tf2_ros import TransformBroadcaster
 from tf_transformations import quaternion_from_euler
+
+from gz.transport13 import Node as GzNode
+from gz.msgs10 import pose_pb2, boolean_pb2
 
 
 class BasePosePublisher(Node):
@@ -33,42 +61,100 @@ class BasePosePublisher(Node):
         self.declare_parameter('yaw', 0.0)
         self.declare_parameter('frame_id', 'odom')
         self.declare_parameter('child_frame_id', 'base_link')
+        # Gazebo teleport target -- must match how the entity was spawned
+        # (see ranger_xarm6.launch.py's spawn_entity_node '-name' arg) and
+        # which world it lives in (see tested_world.world's world name,
+        # kept as 'robotnik_simple' on purpose -- see that file's header).
+        self.declare_parameter('gz_world', 'robotnik_simple')
+        self.declare_parameter('gz_entity_name', 'robot_a')
+        self.declare_parameter('tf_rate', 50.0)         # [Hz] cmd_vel integration + TF publish
+        self.declare_parameter('gz_teleport_rate', 30.0)  # [Hz] Gazebo entity teleport (own thread)
+        self.declare_parameter('cmd_vel_timeout', 0.5)    # [s] stale cmd_vel -> treat as zero
 
         self.frame_id = self.get_parameter('frame_id').value
         self.child_frame_id = self.get_parameter('child_frame_id').value
+        self.gz_world = self.get_parameter('gz_world').value
+        self.gz_entity_name = self.get_parameter('gz_entity_name').value
+        self.cmd_vel_timeout = self.get_parameter('cmd_vel_timeout').value
 
-        # NOT tf2_ros.StaticTransformBroadcaster: its sendTransform() only
-        # ever ADDS a child_frame_id to its internal set and republishes the
-        # accumulated message -- calling it again for a child_frame_id it's
-        # already seen is a silent no-op, so it can never actually update an
-        # existing static transform (confirmed by reading its source,
-        # tf2_ros/static_transform_broadcaster.py). Publishing TFMessage
-        # directly with the same QoS that class would have used sidesteps
-        # that and lets us genuinely replace the transform on every call.
-        qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
-                          history=HistoryPolicy.KEEP_LAST)
-        self.pub_tf_static = self.create_publisher(TFMessage, '/tf_static', qos)
-
-        # z isn't part of set_base_pose (Pose2D has no z) -- Ranger only
-        # ever repositions in-plane (teleporting to face the wall), so z
-        # stays at whatever it was launched with; keep it as instance state
-        # rather than silently resetting it to 0 on every update.
+        self.lock = threading.Lock()
+        self.x = self.get_parameter('x').value
+        self.y = self.get_parameter('y').value
         self.z = self.get_parameter('z').value
-        self._publish(
-            self.get_parameter('x').value,
-            self.get_parameter('y').value,
-            self.get_parameter('yaw').value,
-        )
+        self.yaw = self.get_parameter('yaw').value
+        self.vx = 0.0
+        self.vy = 0.0
+        self.omega = 0.0
+        self.last_cmd_vel_time = None  # monotonic seconds; None = never received one
+
+        self.broadcaster = TransformBroadcaster(self)
+        self.gz_node = GzNode()
+        self._gz_set_pose(self.x, self.y, self.z, self.yaw)
+        self._publish_tf()
 
         self.create_subscription(Pose2D, 'set_base_pose', self._set_base_pose_cb, 10)
+        self.create_subscription(Twist, 'cmd_vel', self._cmd_vel_cb, 10)
+
+        self._last_tick = time.monotonic()
+        tf_rate = self.get_parameter('tf_rate').value
+        self.create_timer(1.0 / tf_rate, self._tick)
+
+        gz_rate = self.get_parameter('gz_teleport_rate').value
+        self._gz_thread = threading.Thread(
+            target=self._gz_teleport_loop, args=(1.0 / gz_rate,), daemon=True)
+        self._gz_thread.start()
+
         self.get_logger().info(
-            f'Base pose publisher ready ({self.frame_id} -> {self.child_frame_id})')
+            f'Base pose publisher ready ({self.frame_id} -> {self.child_frame_id}), '
+            f'driving gz entity "{self.gz_entity_name}" in world "{self.gz_world}"')
 
+    # Body-frame twist from wbc.py (or anything else) -- same convention
+    # wbc.py publishes for Ranger: angular.z=omega, linear.x=vx, linear.y=vy.
+    def _cmd_vel_cb(self, msg):
+        with self.lock:
+            self.vx = msg.linear.x
+            self.vy = msg.linear.y
+            self.omega = msg.angular.z
+            self.last_cmd_vel_time = time.monotonic()
+
+    # Absolute teleport (the "Initial Position" button). Zeroes any
+    # in-flight cmd_vel so a stale command can't immediately start
+    # dragging the base away from the pose it was just teleported to.
     def _set_base_pose_cb(self, msg):
-        self._publish(msg.x, msg.y, msg.theta)
-        self.get_logger().info(f'Base pose updated: x={msg.x} y={msg.y} yaw={msg.theta}')
+        with self.lock:
+            self.x, self.y, self.yaw = msg.x, msg.y, msg.theta
+            self.vx = self.vy = self.omega = 0.0
+            self.last_cmd_vel_time = None
+        self._gz_set_pose(msg.x, msg.y, self.z, msg.theta)
+        self._publish_tf()
+        self.get_logger().info(f'Base pose set: x={msg.x} y={msg.y} yaw={msg.theta}')
 
-    def _publish(self, x, y, yaw):
+    # Integrate the latest cmd_vel by the real elapsed time since the last
+    # tick (not the nominal timer period -- rclpy timers drift under load)
+    # and publish the result as TF. Runs at tf_rate, independent of the
+    # slower Gazebo-teleport thread.
+    def _tick(self):
+        now = time.monotonic()
+        dt = now - self._last_tick
+        self._last_tick = now
+
+        with self.lock:
+            if (self.last_cmd_vel_time is not None
+                    and now - self.last_cmd_vel_time > self.cmd_vel_timeout):
+                self.vx = self.vy = self.omega = 0.0
+            vx, vy, omega = self.vx, self.vy, self.omega
+            yaw = self.yaw
+            # Body-frame twist -> world-frame pose update.
+            c, s = math.cos(yaw), math.sin(yaw)
+            self.x += (vx * c - vy * s) * dt
+            self.y += (vx * s + vy * c) * dt
+            self.yaw += omega * dt
+
+        self._publish_tf()
+
+    def _publish_tf(self):
+        with self.lock:
+            x, y, z, yaw = self.x, self.y, self.z, self.yaw
         qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, yaw)
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
@@ -76,12 +162,36 @@ class BasePosePublisher(Node):
         t.child_frame_id = self.child_frame_id
         t.transform.translation.x = x
         t.transform.translation.y = y
-        t.transform.translation.z = self.z
+        t.transform.translation.z = z
         t.transform.rotation.x = qx
         t.transform.rotation.y = qy
         t.transform.rotation.z = qz
         t.transform.rotation.w = qw
-        self.pub_tf_static.publish(TFMessage(transforms=[t]))
+        self.broadcaster.sendTransform(t)
+
+    # Runs in its own thread since each gz-transport request blocks
+    # (~7ms measured) -- calling it from the tf_rate timer would eat into
+    # that budget and risk falling behind on TF publishing.
+    def _gz_teleport_loop(self, period):
+        while rclpy.ok():
+            with self.lock:
+                x, y, z, yaw = self.x, self.y, self.z, self.yaw
+            self._gz_set_pose(x, y, z, yaw)
+            time.sleep(period)
+
+    def _gz_set_pose(self, x, y, z, yaw):
+        qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, yaw)
+        req = pose_pb2.Pose()
+        req.name = self.gz_entity_name
+        req.position.x, req.position.y, req.position.z = x, y, z
+        req.orientation.x, req.orientation.y = qx, qy
+        req.orientation.z, req.orientation.w = qz, qw
+        try:
+            self.gz_node.request(
+                f'/world/{self.gz_world}/set_pose', req,
+                pose_pb2.Pose, boolean_pb2.Boolean, 200)
+        except Exception as e:
+            self.get_logger().warn(f'gz set_pose failed: {e}', throttle_duration_sec=2.0)
 
 
 def main(args=None):

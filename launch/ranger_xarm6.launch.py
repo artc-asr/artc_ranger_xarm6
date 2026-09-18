@@ -171,25 +171,20 @@ def launch_setup(context, *args, **kwargs):
     if sim:
         run_rviz = LaunchConfiguration('run_rviz').perform(context).lower() in ('true', '1', 'yes')
 
-        # The base has no drive/odometry plugin yet (wheels are passive --
-        # see ranger_mini_v3_description), so nothing else publishes
-        # '{ns}_odom' -> '{ns}_base_link'. wbc.py's control loop looks this
-        # TF up every tick via update_robot_state() and silently no-ops if
-        # it's missing -- without this, bringup.launch.py would spin but the
-        # WBC state machine would never advance. This is honest, not a
-        # workaround: the base genuinely is fixed at the spawn pose right
-        # now. Replace with real base odometry once a drive plugin exists.
-        #
-        # Uses our own base_pose_publisher.py rather than the plain tf2_ros
-        # static_transform_publisher CLI: that tool only ever publishes once
-        # from fixed args and can't be told to republish, so
-        # wbc_visualize.py's "Initial Position" button (which teleports the
-        # Gazebo entity) had no way to update this TF to match without a
-        # second static publisher racing this one for the same edge on
-        # /tf_static -- non-deterministic for any subscriber connecting
-        # after the teleport. This node is the sole owner of the edge;
-        # wbc_visualize.py updates it via the 'set_base_pose' topic instead
-        # of publishing TF itself.
+        # The base has no ros2_control-driven wheels or real drive plugin
+        # (wheels are passive -- see ranger_mini_v3_description), so
+        # nothing else publishes '{ns}_odom' -> '{ns}_base_link' or moves
+        # the Gazebo entity in response to wbc.py's cmd_vel. This node is
+        # both: it's a kinematic (not physics-based) simulation-only
+        # stand-in for a real drive -- integrates cmd_vel and teleports
+        # the entity to match via gz-transport -- and the sole owner of
+        # the odom->base_link TF (also updated by the "Initial Position"
+        # button via the 'set_base_pose' topic; see base_pose_publisher.py
+        # for why that's a single node rather than wbc_visualize.py
+        # broadcasting TF itself). wbc.py's control loop looks this TF up
+        # every tick via update_robot_state() and silently no-ops if it's
+        # missing -- without this node, bringup.launch.py would spin but
+        # the WBC state machine would never advance.
         odom_tf_publisher = Node(
             package='ranger_xarm6_description',
             executable='base_pose_publisher.py',
@@ -201,6 +196,10 @@ def launch_setup(context, *args, **kwargs):
                 'yaw': float(LaunchConfiguration('yaw').perform(context)),
                 'frame_id': f'{prefix}odom',
                 'child_frame_id': f'{prefix}base_link',
+                # Must match spawn_entity_node's '-name' below so this
+                # node's gz-transport teleport calls (see
+                # base_pose_publisher.py) hit the right entity.
+                'gz_entity_name': robot_id or 'ranger_xarm6',
                 'use_sim_time': gazebo,
             }],
             output='screen',

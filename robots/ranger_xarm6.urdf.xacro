@@ -12,8 +12,14 @@
   The arm's ros2_control interface ('arm_velocity_controller', see
   config/ros2_controllers.yaml) matches what wbcc_controller/wbc.py expects
   for Theron/Kairos's UR5e arm, so wbc.py needs no changes to drive this
-  arm. The mobile base has no drive interface wired yet (sim or real);
-  that's separate follow-up work, not part of this integration.
+  arm. The mobile base still has no ros2_control command interface for its
+  wheels (only the state-only block below, for RobotModel/TF); real
+  hardware drive is separate follow-up work
+  (ranger_bringup/westonrobot_ranger_ros2, vendored, untested). Simulation
+  driving IS wired up, just not through this URDF: see
+  launch/ranger_xarm6.launch.py's base_pose_publisher.py, a kinematic
+  (not physics-based) stand-in that integrates wbc.py's cmd_vel directly
+  and teleports the Gazebo entity, bypassing wheel-level control entirely.
 -->
 <robot name="ranger_xarm6" xmlns:xacro="http://www.ros.org/wiki/xacro">
 

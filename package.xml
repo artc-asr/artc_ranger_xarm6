@@ -11,7 +11,11 @@
     base-to-arm offset. ranger_xarm6.launch.py supports both Gazebo Harmonic
     simulation and real hardware (sim:=true/false), exposing the arm as an
     'arm_velocity_controller' joint group so wbcc_controller (wbc.py) drives
-    it identically either way. Base drive (sim or real) is not wired yet.
+    it identically either way. Base drive: real hardware still isn't wired
+    up (ranger_bringup/ranger_ros2, vendored, untested); simulation is,
+    via scripts/base_pose_publisher.py -- a kinematic (not physics-based)
+    stand-in that integrates cmd_vel and teleports the Gazebo entity,
+    since Ranger's wheels have no ros2_control command interface.
   </description>
   <maintainer email="thinkminator1024@gmail.com">wbcc_mm maintainer</maintainer>
   <license>BSD-3-Clause</license>
@@ -38,9 +42,13 @@
   <exec_depend>launch_ros</exec_depend>
   <!-- scripts/base_pose_publisher.py -->
   <exec_depend>rclpy</exec_depend>
-  <exec_depend>tf2_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
   <exec_depend>tf_transformations</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <!-- gz-transport Python bindings, for teleporting the Gazebo entity
+       directly (no 'gz service' CLI subprocess per control tick). -->
+  <exec_depend>gz_transport_vendor</exec_depend>
+  <exec_depend>gz_msgs_vendor</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
