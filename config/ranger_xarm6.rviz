@@ -59,6 +59,27 @@ Visualization Manager:
         Reliability Policy: Reliable
       Value: true
 
+    # Global (not namespaced) topic -- matches wbcc_path/path_publisher.py,
+    # which is launched without a namespace (see simulation.launch.py) the
+    # same way Robotnik's own rviz_config.rviz displayed it (same topic,
+    # same green) before that package was removed from this branch.
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Path
+      Alpha: 1
+      Buffer Length: 1
+      Color: 25; 255; 0
+      Line Style: Lines
+      Line Width: 0.03
+      Pose Style: None
+      Topic:
+        Value: /path_topic
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Value: true
+
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

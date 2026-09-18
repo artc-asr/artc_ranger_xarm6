@@ -81,6 +81,47 @@
     </gazebo>
   </xacro:if>
 
+  <!-- State-only ros2_control interface for the base's 4 steering + 4 wheel
+       joints (see ranger_mini_v3.xacro's own header comment: they're left
+       passive, no command interface / drive plugin; driving the base is
+       still separate follow-up work, unchanged by this). Without any
+       ros2_control interface, nothing ever published these joints' state,
+       so robot_state_publisher had no value for them and couldn't compute
+       their TF: RViz's RobotModel display then has no transform for the
+       wheel/steering links and hides them entirely (not just "not moving",
+       genuinely absent). Declaring them here with state_interface only (no
+       command_interface, no new controller) lets gz_ros2_control's
+       GazeboSimSystem report their actual simulated pose, picked up by
+       the same joint_state_broadcaster the arm already uses (it publishes
+       every joint from every claimed hardware interface by default, see
+       config/ros2_controllers.yaml: no 'joints' list there means "all of
+       them"), so the wheels/steering render (static, since nothing drives
+       them yet) instead of disappearing. Real hardware isn't affected:
+       this whole block is gz-sim-only (_is_gz_sim), same as the plugin
+       block above.
+  -->
+  <xacro:if value="${_is_gz_sim}">
+    <ros2_control name="RangerBaseState" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </hardware>
+      <xacro:macro name="_passive_wheel_joint" params="name">
+        <joint name="$(arg prefix)${name}">
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+        </joint>
+      </xacro:macro>
+      <xacro:_passive_wheel_joint name="fl_steering_joint"/>
+      <xacro:_passive_wheel_joint name="fl_wheel"/>
+      <xacro:_passive_wheel_joint name="fr_steering_joint"/>
+      <xacro:_passive_wheel_joint name="fr_wheel"/>
+      <xacro:_passive_wheel_joint name="rl_steering_joint"/>
+      <xacro:_passive_wheel_joint name="rl_wheel"/>
+      <xacro:_passive_wheel_joint name="rr_steering_joint"/>
+      <xacro:_passive_wheel_joint name="rr_wheel"/>
+    </ros2_control>
+  </xacro:if>
+
   <!-- F/T SENSOR (Gazebo simulation only). Assumed present for this
        integration, per instruction: treat sim force/contact behaviour as
        real. On actual hardware this must instead come from xArm6's optional
