@@ -41,11 +41,15 @@
   <!-- ====================================================================
        PLACEHOLDER FT: base -> arm mount transform.
        No physical Ranger Mini 3 + xArm6 hardware access yet, so this offset
-       is NOT measured: it just centers the arm base on top of the chassis
-       deck with a nominal 5cm mounting plate, clear of the collision box.
-       Replace attach_xyz/attach_rpy below once the real mount is measured.
+       is NOT measured. Raised from an original 5cm nominal mounting-plate
+       guess to 0.3m: at 0.05m the arm could not reach the wall path's top
+       waypoint (world z=1.3) at any base standoff from the wall, including
+       the chassis touching it; see docs/initial_position_ik_notes.md for
+       the IK sweep. 0.3m is still a guess (a riser/pedestal, not a thin
+       plate), not a measurement; replace attach_xyz/attach_rpy below once
+       the real mount is measured.
        ==================================================================== -->
-  <xacro:property name="arm_mount_xyz" value="0 0 0.05" />
+  <xacro:property name="arm_mount_xyz" value="0 0 0.3" />
   <xacro:property name="arm_mount_rpy" value="0 0 0" />
 
   <!-- Base: Ranger Mini 3.0 -->
