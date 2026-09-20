@@ -111,7 +111,7 @@ class BasePosePublisher(Node):
         self.create_subscription(Pose2D, 'set_base_pose', self._set_base_pose_cb, 10)
         self.create_subscription(Twist, 'cmd_vel', self._cmd_vel_cb, 10)
 
-        self._last_tick = time.monotonic()
+        self._last_tick = self.get_clock().now()
         tf_rate = self.get_parameter('tf_rate').value
         self.create_timer(1.0 / tf_rate, self._tick)
 
@@ -146,14 +146,28 @@ class BasePosePublisher(Node):
         self._publish_tf()
         self.get_logger().info(f'Base pose set: x={x} y={msg.y} yaw={msg.theta}')
 
-    # Integrate the latest cmd_vel by the real elapsed time since the last
-    # tick (not the nominal timer period -- rclpy timers drift under load)
-    # and publish the result as TF. Runs at tf_rate, independent of the
-    # slower Gazebo-teleport thread.
+    # Integrate the latest cmd_vel by the actual elapsed *simulated* time
+    # since the last tick (not the nominal timer period, and not wall-clock
+    # elapsed time either -- see below) and publish the result as TF. Runs
+    # at tf_rate, independent of the slower Gazebo-teleport thread.
+    #
+    # Uses self.get_clock().now() (sim-time-aware, given this node's
+    # use_sim_time param -- see ranger_xarm6.launch.py) for the integration
+    # dt, NOT time.monotonic(): confirmed the hard way (see
+    # docs/initial_position_ik_notes.md) that Gazebo's real_time_factor
+    # drops well below 1.0 under the load a whole-body-QP + physics run
+    # produces (~0.3 observed). A wall-clock dt under RTF<1 integrates the
+    # base *faster* than the simulated world it's supposedly moving
+    # through -- e.g. at RTF=0.3, a 1-second wall-clock gap is really only
+    # ~0.3s of simulated time, so a wall-clock dt overshoots the true
+    # simulated displacement by ~3x. wbc.py's own dt had the same bug
+    # (fixed, not measured; see its control_loop()) and needed the same
+    # fix, since it's what actually drives the cmd_vel this integrates.
     def _tick(self):
-        now = time.monotonic()
-        dt = now - self._last_tick
-        self._last_tick = now
+        now = time.monotonic()  # only for the cmd_vel staleness watchdog below
+        sim_now = self.get_clock().now()
+        dt = (sim_now - self._last_tick).nanoseconds / 1e9
+        self._last_tick = sim_now
 
         with self.lock:
             if (self.last_cmd_vel_time is not None
