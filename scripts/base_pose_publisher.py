@@ -49,7 +49,7 @@ from tf2_ros import TransformBroadcaster
 from tf_transformations import quaternion_from_euler
 
 from gz.transport13 import Node as GzNode
-from gz.msgs10 import pose_pb2, boolean_pb2
+from gz.msgs10 import pose_pb2, boolean_pb2, scene_pb2, empty_pb2
 
 
 class BasePosePublisher(Node):
@@ -105,6 +105,7 @@ class BasePosePublisher(Node):
 
         self.broadcaster = TransformBroadcaster(self)
         self.gz_node = GzNode()
+        self._wait_for_entity()
         self._gz_set_pose(self.x, self.y, self.z, self.yaw)
         self._publish_tf()
 
@@ -224,11 +225,47 @@ class BasePosePublisher(Node):
         req.orientation.x, req.orientation.y = qx, qy
         req.orientation.z, req.orientation.w = qz, qw
         try:
-            self.gz_node.request(
+            result, response = self.gz_node.request(
                 f'/world/{self.gz_world}/set_pose', req,
                 pose_pb2.Pose, boolean_pb2.Boolean, 200)
+            if not (result and response.data):
+                self.get_logger().warn(
+                    f'gz set_pose rejected for entity "{self.gz_entity_name}" '
+                    f'(result={result}, ok={response.data if result else None})',
+                    throttle_duration_sec=2.0)
+                return False
+            return True
         except Exception as e:
             self.get_logger().warn(f'gz set_pose failed: {e}', throttle_duration_sec=2.0)
+            return False
+
+    # Blocks (bounded) until the Gazebo entity actually exists, so the
+    # startup teleport and the periodic teleport thread don't race the
+    # separate 'create' spawner node. Polls the world's scene/info service
+    # (Empty -> Scene, a read-only query) rather than retrying set_pose
+    # itself: set_pose against a not-yet-existing entity makes Gazebo's own
+    # C++ UserCommands plugin log '[Err] Unable to update the pose for
+    # entity id:[0]' to its console on *every* rejected attempt -- that's
+    # server-side logging this node can't suppress from the client side no
+    # matter what it does with the (previously entirely discarded)
+    # request() return value, so the fix is to not call set_pose at all
+    # until scene/info confirms the entity is actually there.
+    def _wait_for_entity(self, timeout_sec=15.0, poll_period=0.1):
+        req = empty_pb2.Empty()
+        deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < deadline:
+            try:
+                result, scene = self.gz_node.request(
+                    f'/world/{self.gz_world}/scene/info', req,
+                    empty_pb2.Empty, scene_pb2.Scene, 200)
+                if result and any(m.name == self.gz_entity_name for m in scene.model):
+                    return
+            except Exception:
+                pass
+            time.sleep(poll_period)
+        self.get_logger().warn(
+            f'Gazebo entity "{self.gz_entity_name}" in world "{self.gz_world}" '
+            f'never became available after {timeout_sec}s; proceeding anyway.')
 
 
 def main(args=None):
