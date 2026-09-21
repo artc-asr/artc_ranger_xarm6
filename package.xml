@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>ranger_mini_v3_description</name>
+  <version>0.0.0</version>
+  <description>
+    Ranger Mini 3.0 swerve-drive base URDF (links, joints, meshes). Adapted
+    for ROS 2 from AgileX's upstream ROS 1 package
+    (agilexrobotics/ugv_gazebo_sim, ranger_mini/ranger_mini_v3): wrapped as
+    an xacro macro (xacro:ranger_mini_v3, params="prefix") and repointed
+    mesh package:// URIs, since upstream is a flat non-parameterized
+    catkin package with no ROS 2 / xacro-macro support. Geometry, inertials,
+    and joint limits are unchanged from upstream. See urdf/ranger_mini_v3.xacro
+    for the full adaptation notes. Consumed by ranger_xarm6_description's
+    ranger_xarm6.urdf.xacro.
+  </description>
+  <maintainer email="thinkminator1024@gmail.com">wbcc_mm maintainer</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
