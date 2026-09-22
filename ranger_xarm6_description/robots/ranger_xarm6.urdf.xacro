@@ -157,7 +157,7 @@
   <xacro:xarm_gripper_macro
     prefix="$(arg prefix)"
     attach_to="$(arg prefix)link_eef"
-    attach_xyz="0 0 0.03"
+    attach_xyz="0 0 0.003"
     attach_rpy="0 0 0"
     ros2_control_plugin="$(arg ros2_control_plugin)"
     dof="6"
