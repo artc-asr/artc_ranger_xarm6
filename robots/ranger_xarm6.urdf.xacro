@@ -45,18 +45,27 @@
   <xacro:arg name="robot_ip" default="" />
 
   <!-- ====================================================================
-       PLACEHOLDER FT: base -> arm mount transform.
-       No physical Ranger Mini 3 + xArm6 hardware access yet, so this offset
-       is NOT measured: 0.05m is a nominal thin mounting-plate guess.
-       (A prior revision temporarily raised this to 0.3m, a pedestal-height
-       guess, purely so the arm could reach an artificially high path
-       waypoint; reverted now that the path itself was shifted down to a
-       reasonable height instead: see wbcc_path/path/path.yaml and
-       docs/initial_position_ik_notes.md.) Replace attach_xyz/attach_rpy
-       below once the real mount is measured.
+       FT: base -> arm mount transform, corrected from Gazebo visual
+       inspection after the STEP-derived heights kept turning out wrong.
+       x=-0.2185 (from the mounting-plate geometry in
+       RM_Version_1.2_production.step) checked out visually. z, however,
+       was wrong at 0.25368 (mount plate height relative to the STEP CAD's
+       "Ranger Mini 3.0" node origin), that STEP node's own origin isn't
+       the same reference point as this package's base_link (base_link
+       sits near the top of the chassis per ranger_mini_v3.xacro's
+       collision box / visual mesh; the STEP node's origin is lower, deeper
+       inside the chassis body), so the two aren't directly comparable
+       without correcting for that offset. z set to 0.024 (24mm) per direct
+       visual correction in Gazebo (arm was floating too high). Yaw set to
+       180 degrees, also per visual correction. Still not a hardware
+       measurement, treat as provisional until the real mount is
+       physically measured or the arm's true orientation is confirmed
+       against the ARTC handover note.
+       Kept numerically in sync with arm_base_joint's origin in
+       urdf/ranger_xarm6.urdf.
        ==================================================================== -->
-  <xacro:property name="arm_mount_xyz" value="0 0 0.05" />
-  <xacro:property name="arm_mount_rpy" value="0 0 0" />
+  <xacro:property name="arm_mount_xyz" value="-0.218500 0.000000 0.024000" />
+  <xacro:property name="arm_mount_rpy" value="0 0 3.141593" />
 
   <!-- Base: Ranger Mini 3.0 -->
   <xacro:include filename="$(find ranger_mini_v3_description)/urdf/ranger_mini_v3.xacro" />
