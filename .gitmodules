@@ -1,0 +1,9 @@
+[submodule "xarm_ros2"]
+	path = xarm_ros2
+	url = https://github.com/xArm-Developer/xarm_ros2.git
+[submodule "ugv_sdk"]
+	path = ugv_sdk
+	url = https://github.com/westonrobot/ugv_sdk.git
+[submodule "westonrobot_ranger_ros2"]
+	path = westonrobot_ranger_ros2
+	url = https://github.com/westonrobot/ranger_ros2.git
