@@ -308,44 +308,35 @@
        mount_plate_link: STEP-measured offset from the xArm-Mounting
        plate's own native origin, composed with the current (user-tuned)
        mount_plate_xyz/rpy.
-       Built from xarm_description's own d435i_urdf/realsense_gz macros
-       (same ones the wrist camera above uses) rather than a plain
-       mesh, so these are fully functional Gazebo camera sensors, not
-       just decoration; needs its own explicit includes here since
-       those macros were only pulled in earlier INSIDE xarm_device's own
-       macro body (out of scope for us, same issue common.link.xacro /
-       xarm_gripper_macro.xacro had). Each needs a distinct prefix to
-       avoid colliding with the arm's own link_eef/camera_link names;
-       d435i_urdf hardcodes its camera body link as "${prefix}link_eef"
-       (an odd name to inherit for a base-mounted camera that isn't an
-       end-effector, but that's the vendored macro's own naming, kept
-       for consistency rather than forking it). -->
-  <xacro:include filename="$(find xarm_description)/urdf/camera/realsense_d435i.urdf.xacro" />
-  <xacro:include filename="$(find xarm_description)/urdf/common/common.material.xacro" />
+       Built from the standard ros-humble-realsense2-description package's
+       own sensor_d435i macro (apt package, not xarm_description's
+       d435i_urdf like the wrist camera above uses): that vendored one
+       hardcodes xarm's own arm-mount stand into the visual mesh
+       (d435_with_cam_stand.stl), correct for the wrist where that stand
+       is the real hardware, wrong here where these two have their own
+       separate STEP-modeled mounting bracket. realsense2_description's
+       sensor_d435i uses the bare d435.dae mesh (no mount baked in) and
+       is the same macro most ROS RealSense integrations use. It has no
+       Gazebo sensor plugin wiring of its own though (purely mechanical
+       description), so the fixed_cam_sensor_tags macro below still
+       supplies that, same as before; frame naming lines up automatically
+       since sensor_d435i's own "name" param becomes the "${name}_"
+       prefix on all its frames (depth_frame, color_frame, etc.), and
+       fixed_cam_sensor_tags's "prefix" param is applied the same way. -->
+  <xacro:include filename="$(find realsense2_description)/urdf/_d435i.urdf.xacro" />
   <xacro:property name="fixed_cam_xyz" value="0.142000 0 0.063120" />
   <xacro:property name="fixed_cam1_rpy" value="1.570796 0 -1.570796" />
   <xacro:property name="fixed_cam2_rpy" value="1.570796 0 1.570796" />
 
-  <!-- common_material defines "${prefix}Silver" etc.; the arm's own call
-       (inside xarm_device above) only covers "$(arg prefix)Silver", not
-       these cameras' own fixed_camN_ prefixes, so d435i_urdf's visual
-       mesh material reference would otherwise be left undefined. -->
-  <xacro:common_material prefix="$(arg prefix)fixed_cam1_" />
-  <xacro:common_material prefix="$(arg prefix)fixed_cam2_" />
-
-  <xacro:d435i_urdf prefix="$(arg prefix)fixed_cam1_" add_d435i_links="true" />
-  <joint name="$(arg prefix)fixed_cam1_joint" type="fixed">
-    <parent link="$(arg prefix)base_link" />
-    <child link="$(arg prefix)fixed_cam1_link_eef" />
+  <xacro:sensor_d435i parent="$(arg prefix)base_link" name="$(arg prefix)fixed_cam1_camera"
+    use_nominal_extrinsics="true" use_mesh="true">
     <origin xyz="${fixed_cam_xyz}" rpy="${fixed_cam1_rpy}" />
-  </joint>
+  </xacro:sensor_d435i>
 
-  <xacro:d435i_urdf prefix="$(arg prefix)fixed_cam2_" add_d435i_links="true" />
-  <joint name="$(arg prefix)fixed_cam2_joint" type="fixed">
-    <parent link="$(arg prefix)base_link" />
-    <child link="$(arg prefix)fixed_cam2_link_eef" />
+  <xacro:sensor_d435i parent="$(arg prefix)base_link" name="$(arg prefix)fixed_cam2_camera"
+    use_nominal_extrinsics="true" use_mesh="true">
     <origin xyz="${fixed_cam_xyz}" rpy="${fixed_cam2_rpy}" />
-  </joint>
+  </xacro:sensor_d435i>
 
   <!-- Sensor tags only (no Sensors-system <plugin> block): realsense_gz
        (realsense.gazebo.xacro) bundles BOTH the per-camera sensor
@@ -357,7 +348,17 @@
        scene" Ogre2 crash tested_world.world's own duplicate copy caused
        earlier (see that file's comment). One Sensors registration
        (still xarm_device's, for the wrist camera) covers the whole
-       simulation; these two only need the sensor tags themselves. -->
+       simulation; these two only need the sensor tags themselves.
+       Reference frame names below (camera_depth_frame, camera_infra1_frame,
+       etc.) match realsense2_description's sensor_d435i naming (infra1/
+       infra2), NOT xarm_description's own d435i_urdf naming (left_ir/
+       right_ir) that this macro's sensor tag content was originally
+       copied from, and mismatched once already (silently: gz-sim doesn't
+       error on a <gazebo reference> pointing at a link that doesn't
+       exist, it just drops that sensor, so fixed_cam1/2's infra1/infra2
+       topics were simply missing with nothing in the log to explain why;
+       caught by checking `gz topic -l` against the expected topic list
+       rather than trusting a clean launch log alone). -->
   <xacro:macro name="fixed_cam_sensor_tags" params="prefix">
     <gazebo reference="${prefix}camera_depth_frame">
       <sensor name="${prefix}cameradepth" type="rgbd_camera">
@@ -417,7 +418,7 @@
         <enable_metrics>true</enable_metrics>
       </sensor>
     </gazebo>
-    <gazebo reference="${prefix}camera_left_ir_frame">
+    <gazebo reference="${prefix}camera_infra1_frame">
       <sensor name="${prefix}cameraired1" type="camera">
         <camera name="${prefix}camera">
           <horizontal_fov>1.57</horizontal_fov>
@@ -443,7 +444,7 @@
         <topic>${prefix}camera/infra1/image_raw</topic>
       </sensor>
     </gazebo>
-    <gazebo reference="${prefix}camera_right_ir_frame">
+    <gazebo reference="${prefix}camera_infra2_frame">
       <sensor name="${prefix}cameraired2" type="camera">
         <camera name="${prefix}camera">
           <horizontal_fov>1.57</horizontal_fov>

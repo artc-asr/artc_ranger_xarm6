@@ -82,6 +82,32 @@ def _prefix_controller_joints(yaml_path, prefix, robot_id, use_sim_time):
 
 
 def launch_setup(context, *args, **kwargs):
+    # gz-sim doesn't resolve 'package://' mesh URIs against AMENT_PREFIX_PATH
+    # the way robot_state_publisher/RViz do -- it needs GZ_SIM_RESOURCE_PATH
+    # explicitly, which is empty by default. Only matters for meshes
+    # referenced with bare 'package://' (e.g. ros-humble-realsense2-
+    # description's sensor_d435i, used for the two frame-mounted cameras);
+    # this repo's own meshes all resolve fine already because
+    # xarm_device_macro.xacro deliberately uses absolute file://$(find ...)
+    # paths instead, specifically for the gz-sim case (see that file's own
+    # mesh_path property) -- so this is filling the same gap
+    # realsense2_description didn't work around itself, for every ROS
+    # package's share dir at once (not just this one), so it doesn't need
+    # revisiting the next time some other vendored package's mesh doesn't
+    # show up in Gazebo. Setting os.environ directly (not a launch
+    # SetEnvironmentVariable action) so it's in effect for every
+    # ExecuteProcess/Node constructed below in this same call, including
+    # gz_sim.launch.py further down.
+    resource_paths = [
+        os.path.join(p, 'share')
+        for p in os.environ.get('AMENT_PREFIX_PATH', '').split(os.pathsep)
+        if p
+    ]
+    existing_gz_resource_path = os.environ.get('GZ_SIM_RESOURCE_PATH', '')
+    if existing_gz_resource_path:
+        resource_paths.append(existing_gz_resource_path)
+    os.environ['GZ_SIM_RESOURCE_PATH'] = os.pathsep.join(resource_paths)
+
     sim = LaunchConfiguration('sim').perform(context).lower() in ('true', '1', 'yes')
     # gazebo:=false -- sim only: skip physics entirely (no gz_sim, no
     # ros2_control/controller_manager). Just robot_state_publisher + a
