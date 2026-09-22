@@ -166,6 +166,18 @@ def launch_setup(context, *args, **kwargs):
             arguments=['arm_velocity_controller'],
             parameters=[{'use_sim_time': sim}],
         ),
+        # G2 gripper's drive_joint (config/ros2_controllers.yaml); separate
+        # ros2_control resource ('XArmGripperSystem', see
+        # xarm_gripper.ros2_control.xacro) from the arm's, so its own
+        # spawner call, same pattern as arm_velocity_controller above.
+        Node(
+            package='controller_manager',
+            executable='spawner',
+            namespace=robot_id,
+            output='screen',
+            arguments=['gripper_position_controller'],
+            parameters=[{'use_sim_time': sim}],
+        ),
     ]
 
     if sim:

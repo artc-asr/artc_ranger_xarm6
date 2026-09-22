@@ -24,6 +24,9 @@ controller_manager:
     arm_velocity_controller:
       type: velocity_controllers/JointGroupVelocityController
 
+    gripper_position_controller:
+      type: position_controllers/JointGroupPositionController
+
 arm_velocity_controller:
   ros__parameters:
     joints:
@@ -34,3 +37,16 @@ arm_velocity_controller:
       - joint5
       - joint6
     interface_name: velocity
+
+# Drives the G2 gripper's single actuated joint ('drive_joint'); the other
+# five finger/knuckle joints are Gazebo mimic joints (see
+# xarm_gripper_macro.xacro's mimic_joint_plugin_gazebo blocks) that follow
+# drive_joint automatically, not separate controller targets. Command range
+# is the drive_joint URDF limits (radians); command via
+# '<ns>/gripper_position_controller/commands' (std_msgs/Float64MultiArray,
+# single-element).
+gripper_position_controller:
+  ros__parameters:
+    joints:
+      - drive_joint
+    interface_name: position

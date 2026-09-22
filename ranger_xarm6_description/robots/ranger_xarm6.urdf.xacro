@@ -91,7 +91,18 @@
   <xacro:include filename="$(find ranger_mini_v3_description)/urdf/ranger_mini_v3.xacro" />
   <xacro:ranger_mini_v3 prefix="$(arg prefix)" />
 
-  <!-- Arm: xArm6, mounted on the base via the placeholder FT above -->
+  <!-- Arm: xArm6, mounted on the base via the placeholder FT above.
+       model1300="true": this unit is the F/T-sensor-equipped "XI1300"
+       variant (confirmed by RM_Version_1.2_production.step's own arm
+       node name, "xArm6(XI1300)_02022023"), swaps link6's mesh from
+       the plain xarm_description default to end_tool/visual/collision
+       end_tool_1300.stl, xarm_description's actual model of the
+       F/T-sensor-equipped tool flange (see xarm6.urdf.xacro's
+       model_num >= 1300 branch). add_gripper/gripper_version="G2":
+       adds the real, properly-modeled UFACTORY G2 gripper at link_eef
+       (own links/joints/meshes + mimic-jointed fingers + its own
+       ros2_control "XArmGripperSystem" resource, driven via
+       gripper_position_controller below). -->
   <xacro:include filename="$(find xarm_description)/urdf/xarm_device_macro.xacro" />
   <xacro:xarm_device
     prefix="$(arg prefix)"
@@ -106,6 +117,9 @@
     ros2_control_params="$(arg ros2_control_params)"
     robot_ip="$(arg robot_ip)"
     load_gazebo_plugin="false"
+    model1300="true"
+    add_gripper="true"
+    gripper_version="G2"
   />
 
   <!-- Arm-to-base mounting plate (visual/collision only, no new joint):
@@ -216,49 +230,11 @@
     <origin xyz="${extras_xyz}" rpy="${extras_rpy}" />
   </joint>
 
-  <!-- Tool head / end-effector adapter (visual/collision only, static):
-       RM_Version_1.2_production.step's "Tool head" node, a small
-       (~86x54x79mm) part on the wrist, absent from Gazebo until now.
-       Mounted at link_eef (== link6 exactly here: dof=6,
-       add_realsense_d435i=false in the xarm_device call above, so
-       xarm_device_macro.xacro's joint_eef has a zero offset), the
-       canonical tool-mount frame xarm_description itself defines.
-       xyz/rpy below are a placeholder identity offset, NOT measured:
-       unlike arm_mount_xyz/rpy, this one couldn't be derived from the
-       STEP file at all, because the individual per-joint STEP nodes
-       (J1..J6) turned out to use arbitrary CAD-native part origins that
-       don't correspond to the URDF's joint/flange frames (checked: J1's
-       node origin isn't at the arm's own mounting frame either), and this
-       STEP's arm isn't necessarily posed at the URDF's zero configuration,
-       so there's no clean way to solve for the true link6->tool_head
-       offset from geometry alone. Needs the same visual-tuning-in-Gazebo
-       treatment arm_mount_xyz/rpy got. -->
-  <xacro:property name="tool_head_xyz" value="0 0 0" />
-  <xacro:property name="tool_head_rpy" value="0 0 0" />
-  <link name="$(arg prefix)tool_head_link">
-    <visual>
-      <geometry>
-        <mesh filename="package://ranger_xarm6_description/meshes/tool_head.stl" />
-      </geometry>
-      <material name="tool_head_grey">
-        <color rgba="0.3 0.3 0.3 1" />
-      </material>
-    </visual>
-    <collision>
-      <geometry>
-        <mesh filename="package://ranger_xarm6_description/meshes/tool_head.stl" />
-      </geometry>
-    </collision>
-    <inertial>
-      <mass value="0.1" />
-      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001" />
-    </inertial>
-  </link>
-  <joint name="$(arg prefix)tool_head_joint" type="fixed">
-    <parent link="$(arg prefix)link_eef" />
-    <child link="$(arg prefix)tool_head_link" />
-    <origin xyz="${tool_head_xyz}" rpy="${tool_head_rpy}" />
-  </joint>
+  <!-- tool_head_link (the provisional STEP "Tool head" mesh, a
+       placeholder identity-offset guess) has been removed: the real G2
+       gripper now attaches at link_eef instead (via add_gripper/
+       gripper_version="G2" above), and the two would have overlapped at
+       the same frame. meshes/tool_head.stl is no longer referenced. -->
 
   <xacro:property name="_is_gz_sim" value="${'$(arg ros2_control_plugin)' == 'gz_ros2_control/GazeboSimSystem'}" />
   <xacro:if value="${_is_gz_sim}">
@@ -313,14 +289,15 @@
     </ros2_control>
   </xacro:if>
 
-  <!-- F/T SENSOR (Gazebo simulation only). Assumed present for this
-       integration, per instruction: treat sim force/contact behaviour as
-       real. On actual hardware this must instead come from xArm6's optional
-       F/T sensor accessory (see ranger_xarm6.launch.py's sim:=false path,
-       which remaps 'uf_ftsensor_ext_states'); whether this physical unit
-       has that accessory installed is unconfirmed (not itemised in the ARTC
-       handover note), so don't assume the sim behaviour carries over to
-       hardware without checking. Mirrors the same gz-sim force_torque
+  <!-- F/T SENSOR (Gazebo simulation only): simulated physics force/torque
+       measurement at joint6. This is the sim-side sensor plugin, separate
+       from model1300="true" above (which swaps in the F/T-sensor-equipped
+       tool-flange MESH); the physical accessory's presence, previously
+       flagged here as unconfirmed, is now confirmed by
+       RM_Version_1.2_production.step's arm node itself being named
+       "xArm6(XI1300)_02022023". On actual hardware this comes from that
+       accessory via ranger_xarm6.launch.py's sim:=false path (remaps
+       'uf_ftsensor_ext_states'). Mirrors the same gz-sim force_torque
        sensor + flat 'force_torque' topic convention robotnik_description
        uses at UR5e's wrist_3 for Theron/Kairos (see rbtheron_plus.urdf.xacro),
        so wbc.py's force_torque_callback needs no changes either way. -->
