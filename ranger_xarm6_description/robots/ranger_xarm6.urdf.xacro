@@ -337,8 +337,8 @@
        see the comment below) rather than an arbitrary number, per
        instruction that the two cameras need a real position offset
        between them, not just the orientation difference they had before. -->
-  <xacro:property name="fixed_cam1_xyz" value="0.142000 0.034949 0.388500" />
-  <xacro:property name="fixed_cam2_xyz" value="0.142000 -0.034949 0.388500" />
+  <xacro:property name="fixed_cam1_xyz" value="0.250000 0.006 0.378500" />
+  <xacro:property name="fixed_cam2_xyz" value="0.032000 -0.006 0.378500" />
   <xacro:property name="fixed_cam1_rpy" value="0 0 0" />
   <xacro:property name="fixed_cam2_rpy" value="0 0 3.14159" />
 
