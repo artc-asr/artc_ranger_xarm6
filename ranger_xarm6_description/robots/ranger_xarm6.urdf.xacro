@@ -292,13 +292,13 @@
 
   <!-- Two frame-mounted RealSense D435i cameras, per
        RM_Version_1.2_production.step's "Camera_module_for_design"
-       cluster: "Realsense_Camera_module v2" and
-       "Realsense_Camera_module v1(Mirror)(Mirror)" sit at the EXACT same
-       point (checked: 0.0mm position difference) and differ only by a
-       180deg rotation about one axis, i.e. not two unresolved design
-       variants of one camera like the rest of that cluster (folded into
-       extras_link) turned out to be, but two real cameras mounted
-       back-to-back at the same point, facing opposite directions. Final
+       cluster. In STEP, "Realsense_Camera_module v2" and
+       "Realsense_Camera_module v1(Mirror)(Mirror)" actually sit at the
+       exact same point (checked: 0.0mm position difference), differing
+       only by a 180deg rotation about one axis; per instruction, given a
+       real position offset instead (matching the USB camera pair's own
+       genuine left/right spacing in that same cluster, see fixed_cam1_xyz/
+       fixed_cam2_xyz below), rather than mounting them coincident. Final
        intended hardware, per instruction: 2x D435i here (this block) +
        1x Orbbec Gemini 2 on the wrist (replacing the arm's own camera
        eventually, software-side only for now, keeping the D435i mesh
@@ -324,18 +324,32 @@
        prefix on all its frames (depth_frame, color_frame, etc.), and
        fixed_cam_sensor_tags's "prefix" param is applied the same way. -->
   <xacro:include filename="$(find realsense2_description)/urdf/_d435i.urdf.xacro" />
-  <xacro:property name="fixed_cam_xyz" value="0.142000 0 0.063120" />
-  <xacro:property name="fixed_cam1_rpy" value="1.570796 0 -1.570796" />
-  <xacro:property name="fixed_cam2_rpy" value="1.570796 0 1.570796" />
+  <!-- Height (Z) raised from the individual Realsense_Camera_module STEP
+       node's own position (0.06312m) to Camera_module_for_design's own
+       bbox-center height (0.3885m in base_link frame; X/Y of that center
+       are ~0.142/~0, matching what was already used, so only Z actually
+       changes), per instruction: mount at the height of the whole
+       cluster's centre, not the individual camera part's own STEP
+       position. Y offset (+-0.034949m) reuses the USB camera pair's own
+       real measured left/right spacing in this same STEP cluster
+       (USB_Camera_module v2 / v1(Mirror), a genuine mounted pair, unlike
+       the two Realsense variants which sit exactly coincident in STEP,
+       see the comment below) rather than an arbitrary number, per
+       instruction that the two cameras need a real position offset
+       between them, not just the orientation difference they had before. -->
+  <xacro:property name="fixed_cam1_xyz" value="0.142000 0.034949 0.388500" />
+  <xacro:property name="fixed_cam2_xyz" value="0.142000 -0.034949 0.388500" />
+  <xacro:property name="fixed_cam1_rpy" value="0 0 0" />
+  <xacro:property name="fixed_cam2_rpy" value="0 0 3.14159" />
 
   <xacro:sensor_d435i parent="$(arg prefix)base_link" name="$(arg prefix)fixed_cam1_camera"
     use_nominal_extrinsics="true" use_mesh="true">
-    <origin xyz="${fixed_cam_xyz}" rpy="${fixed_cam1_rpy}" />
+    <origin xyz="${fixed_cam1_xyz}" rpy="${fixed_cam1_rpy}" />
   </xacro:sensor_d435i>
 
   <xacro:sensor_d435i parent="$(arg prefix)base_link" name="$(arg prefix)fixed_cam2_camera"
     use_nominal_extrinsics="true" use_mesh="true">
-    <origin xyz="${fixed_cam_xyz}" rpy="${fixed_cam2_rpy}" />
+    <origin xyz="${fixed_cam2_xyz}" rpy="${fixed_cam2_rpy}" />
   </xacro:sensor_d435i>
 
   <!-- Sensor tags only (no Sensors-system <plugin> block): realsense_gz
