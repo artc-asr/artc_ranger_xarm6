@@ -13,6 +13,7 @@ Application code (e.g. [wbcc_mm](https://github.com/artc-asr/whole_body_complian
 | `xarm_ros2` (submodule) | UFACTORY xArm6 description, ros2_control, and driver packages. |
 | `westonrobot_ranger_ros2` (submodule) | Ranger Mini 3.0 real-hardware bringup/driver. |
 | `ugv_sdk` (submodule) | Weston Robot UGV SDK — `ranger_ros2`'s driver dependency. |
+| `gz_ros2_control` (submodule, `humble` branch) | Built from source with `GZ_VERSION=harmonic` (see below) — the `ros-humble-gz-ros2-control` **apt** package is built against Fortress (`libignition-gazebo6`) regardless of what's installed locally, so on a Harmonic system its plugin exports the wrong ABI symbol (`IgnitionPluginHook` instead of `GzPluginHook`) and Gazebo silently fails to load it, which cascades into `controller_manager` never starting and `joint_state_broadcaster`/`arm_velocity_controller` never spawning. Building this submodule locally (the main `colcon build` below already does, since `GZ_VERSION=harmonic` is exported first) overlays a correctly-linked version. |
 
 ## Installation
 
@@ -39,13 +40,17 @@ rosdep install --from-paths . --ignore-src -r -y \
 
 # Build
 export GZ_VERSION=harmonic
-colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release --packages-skip xarm_moveit_servo xarm_planner
+colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release --packages-skip xarm_moveit_servo xarm_planner \
+  gz_ros2_control_demos gz_ros2_control_tests ign_ros2_control ign_ros2_control_demos \
+  --allow-overriding gz_ros2_control
 
 # Source
 source install/setup.bash
 ```
 
 > **Note:** `xarm_moveit_servo`/`xarm_planner` are skipped — `xarm_moveit_servo` fails to build against Humble's older `moveit_msgs` (missing `servo_command_type.hpp`, a newer MoveIt Servo API only present from Jazzy+).
+>
+> **Note:** `gz_ros2_control_demos`/`gz_ros2_control_tests`/`ign_ros2_control`/`ign_ros2_control_demos` (siblings of `gz_ros2_control` inside that same submodule) are skipped too — only `gz_ros2_control` itself is needed here (see the Contents table above for why it's built from source at all), and the demo/test packages pull in extra controller deps (`control_toolbox`, `ackermann_steering_controller`, `mecanum_drive_controller`, `tricycle_controller`, ...) this repo doesn't otherwise need.
 
 ## Quick Start
 

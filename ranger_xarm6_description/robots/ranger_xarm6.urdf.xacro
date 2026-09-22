@@ -67,6 +67,26 @@
   <xacro:property name="arm_mount_xyz" value="-0.218500 0.000000 0.024000" />
   <xacro:property name="arm_mount_rpy" value="0 0 3.141593" />
 
+  <!-- ====================================================================
+       FT: base_link -> xarm mount-plate visual (meshes/xarm_mount_plate.stl),
+       derived from RM_Version_1.2_production.step. Unlike arm_mount_xyz/rpy
+       above, this one is NOT independently visually corrected: it's
+       arm_mount_xyz/rpy (base_link -> link_base, already trusted/tuned)
+       composed with the STEP-measured link_base -> plate transform, i.e.
+       "wherever the trusted arm mount is, the plate sits at this fixed
+       offset from it" per CAD. That composition sidesteps the ranger's own
+       STEP origin entirely (per-repo note: this STEP's Ranger Mini node is
+       simplified and its origin doesn't line up with ranger_mini_v3.xacro's
+       base_link), since both the plate and the arm hang off the same
+       "Version_1.2_production_locked" assembly root and are properly
+       mated to each other there. Purely a visual/collision addition (the
+       xArm-Mounting plate on Ranger Mini node in STEP); it carries no new
+       joint, base_link already accounts for the arm sitting at the height
+       arm_mount_xyz/rpy implies.
+       ==================================================================== -->
+  <xacro:property name="mount_plate_xyz" value="-0.218500 0 0.02000" />
+  <xacro:property name="mount_plate_rpy" value="0 0 -1.570796" />
+
   <!-- Base: Ranger Mini 3.0 -->
   <xacro:include filename="$(find ranger_mini_v3_description)/urdf/ranger_mini_v3.xacro" />
   <xacro:ranger_mini_v3 prefix="$(arg prefix)" />
@@ -87,6 +107,158 @@
     robot_ip="$(arg robot_ip)"
     load_gazebo_plugin="false"
   />
+
+  <!-- Arm-to-base mounting plate (visual/collision only, no new joint):
+       the physical bracket the xArm6 bolts to on top of the Ranger, per
+       RM_Version_1.2_production.step's "xArm-Mounting plate on Ranger
+       Mini" node. Missing from Gazebo until now; the fixed transform above
+       (arm_mount_xyz/rpy) already accounted for its effect on the arm's
+       pose, this just makes it visible/collidable too. -->
+  <link name="$(arg prefix)mount_plate_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/xarm_mount_plate.stl" />
+      </geometry>
+      <material name="mount_plate_grey">
+        <color rgba="0.6 0.6 0.6 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/xarm_mount_plate.stl" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.3" />
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0005" />
+    </inertial>
+  </link>
+  <joint name="$(arg prefix)mount_plate_joint" type="fixed">
+    <parent link="$(arg prefix)base_link" />
+    <child link="$(arg prefix)mount_plate_link" />
+    <origin xyz="${mount_plate_xyz}" rpy="${mount_plate_rpy}" />
+  </joint>
+
+  <!-- Camera rig + leftover shapes from RM_Version_1.2_production.step,
+       under its root assembly ("Version_1.2_production_locked"): the
+       "Camera_module_for_design" subtree (USB_Camera_module /
+       Realsense_Camera_module x2 + Top_plate_blank + Component104,
+       previously found floating unmated near the STEP origin) and the
+       root-level anonymous "leftover free shape" bucket FreeCAD's STEP
+       importer collects there (labelled COMPOUND004 in this FreeCAD
+       import; a different CAD tool may number/name it differently, e.g.
+       "Compound031", same node). All individual fastener/screw PRODUCT
+       instances (10 of them, at the assembly root) are deliberately
+       excluded, per instruction. Merged into one mesh; the actual root
+       cause of Top_plate_blank looking disconnected from its mounting
+       bracket in Gazebo (a "floating panel") turned out to be FreeCAD's
+       own STEP-to-mesh tessellation specifically, not decimation and not
+       a seam/vertex-welding problem: confirmed by tessellating Compound031
+       alone (no merging, no decimation, full fidelity) through two other
+       OpenCASCADE-based pipelines (CadQuery/OCP and raw pythonocc-core)
+       and comparing all three; only FreeCAD's output showed the gap
+       (pythonocc-core's run even logged it outright: "8 faces have been
+       skipped due to null triangulation"). So this mesh is now generated
+       via CadQuery instead: FreeCAD is still used to navigate the STEP
+       assembly tree and select/isolate this bundle's shapes by label (a
+       different problem, unaffected by this), re-exported losslessly as
+       a standalone intermediate STEP (pure BREP, no tessellation), then
+       CadQuery reads THAT and does the actual meshing (0.05mm linear /
+       0.3 angular tolerance) and STL export: 122.5k faces, 5.8MB. (mm ->
+       m unit conversion and the bbox-center recentering below were done
+       as a pure vertex-scale/translate on the already-tessellated
+       triangle data, not via CadQuery's own Shape.scale(), because
+       combining scale() with export bloated the file to 150+MB:
+       non-uniform-looking OCCT transforms can force simple analytic
+       surfaces (cylinders etc.) into more general BSpline
+       representations before meshing, producing far more triangles for
+       the same nominal tolerance.) Positioned the same way as
+       mount_plate_xyz/rpy above: this bundle's merged bounding-box
+       center, taken as a world-axis-aligned point (no rotation applied
+       beyond that), expressed relative to the xArm-Mounting plate's own
+       native STEP origin and then composed with mount_plate_xyz/rpy
+       (itself trusted/tuned now), verified by reconstructing the merged
+       mesh's points through this exact transform and overlaying them back
+       onto the original STEP geometry (matched), and confirmed the
+       fastener exclusion doesn't change this position (they sat within
+       the bounding box already). That's a placement, not a mounting
+       relationship, though: this bundle was NOT assembly-mated to
+       anything in the CAD (it sat parked near the STEP file's origin,
+       across multiple unresolved design variants: v1/v2/Mirror, per
+       the "for_design" folder it came from), so treat this link's
+       position as "reproduces where the STEP file happened to leave it,
+       converted into base_link's frame" rather than a measured or
+       verified real-world mounting location. -->
+  <xacro:property name="extras_xyz" value="0.1435 0 0.2095" />
+  <xacro:property name="extras_rpy" value="0 0 -1.570796" />
+  <link name="$(arg prefix)extras_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/extras_compressed.stl" />
+      </geometry>
+      <material name="extras_grey">
+        <color rgba="0.5 0.5 0.55 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/extras_compressed.stl" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.5" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
+    </inertial>
+  </link>
+  <joint name="$(arg prefix)extras_joint" type="fixed">
+    <parent link="$(arg prefix)base_link" />
+    <child link="$(arg prefix)extras_link" />
+    <origin xyz="${extras_xyz}" rpy="${extras_rpy}" />
+  </joint>
+
+  <!-- Tool head / end-effector adapter (visual/collision only, static):
+       RM_Version_1.2_production.step's "Tool head" node, a small
+       (~86x54x79mm) part on the wrist, absent from Gazebo until now.
+       Mounted at link_eef (== link6 exactly here: dof=6,
+       add_realsense_d435i=false in the xarm_device call above, so
+       xarm_device_macro.xacro's joint_eef has a zero offset), the
+       canonical tool-mount frame xarm_description itself defines.
+       xyz/rpy below are a placeholder identity offset, NOT measured:
+       unlike arm_mount_xyz/rpy, this one couldn't be derived from the
+       STEP file at all, because the individual per-joint STEP nodes
+       (J1..J6) turned out to use arbitrary CAD-native part origins that
+       don't correspond to the URDF's joint/flange frames (checked: J1's
+       node origin isn't at the arm's own mounting frame either), and this
+       STEP's arm isn't necessarily posed at the URDF's zero configuration,
+       so there's no clean way to solve for the true link6->tool_head
+       offset from geometry alone. Needs the same visual-tuning-in-Gazebo
+       treatment arm_mount_xyz/rpy got. -->
+  <xacro:property name="tool_head_xyz" value="0 0 0" />
+  <xacro:property name="tool_head_rpy" value="0 0 0" />
+  <link name="$(arg prefix)tool_head_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/tool_head.stl" />
+      </geometry>
+      <material name="tool_head_grey">
+        <color rgba="0.3 0.3 0.3 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/tool_head.stl" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" />
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001" />
+    </inertial>
+  </link>
+  <joint name="$(arg prefix)tool_head_joint" type="fixed">
+    <parent link="$(arg prefix)link_eef" />
+    <child link="$(arg prefix)tool_head_link" />
+    <origin xyz="${tool_head_xyz}" rpy="${tool_head_rpy}" />
+  </joint>
 
   <xacro:property name="_is_gz_sim" value="${'$(arg ros2_control_plugin)' == 'gz_ros2_control/GazeboSimSystem'}" />
   <xacro:if value="${_is_gz_sim}">

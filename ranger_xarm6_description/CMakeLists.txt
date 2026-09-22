@@ -4,7 +4,7 @@ project(ranger_xarm6_description)
 find_package(ament_cmake REQUIRED)
 
 install(
-  DIRECTORY robots launch config worlds
+  DIRECTORY robots launch config worlds meshes
   DESTINATION share/${PROJECT_NAME}
 )
 

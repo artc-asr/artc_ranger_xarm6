@@ -7,3 +7,7 @@
 [submodule "westonrobot_ranger_ros2"]
 	path = westonrobot_ranger_ros2
 	url = https://github.com/westonrobot/ranger_ros2.git
+[submodule "gz_ros2_control"]
+	path = gz_ros2_control
+	url = https://github.com/ros-controls/gz_ros2_control.git
+	branch = humble
