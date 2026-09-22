@@ -98,11 +98,28 @@
        the plain xarm_description default to end_tool/visual/collision
        end_tool_1300.stl, xarm_description's actual model of the
        F/T-sensor-equipped tool flange (see xarm6.urdf.xacro's
-       model_num >= 1300 branch). add_gripper/gripper_version="G2":
-       adds the real, properly-modeled UFACTORY G2 gripper at link_eef
-       (own links/joints/meshes + mimic-jointed fingers + its own
-       ros2_control "XArmGripperSystem" resource, driven via
-       gripper_position_controller below). -->
+       model_num >= 1300 branch), a single combined mesh, no separate
+       F/T sensor accessory mesh exists to add on top of it.
+       add_realsense_d435i="true": adds the wrist-mounted RealSense
+       D435i (own link_eef body with the d435_with_cam_stand mesh,
+       camera_depth/color/left_ir/right_ir frames, and, since
+       ros2_control_plugin is gz_ros2_control/GazeboSimSystem here,
+       the Harmonic-native realsense_gz sensor plugin), i.e. NOT
+       use_gazebo_camera/camera_gazebo, a different, unrelated legacy
+       fixture (hardcoded on link_base, Gazebo-Classic-only
+       libgazebo_ros_camera.so plugin, incompatible with Harmonic).
+       Intended physical stack, per instruction: link6 (F/T sensor,
+       built into the end_tool_1300 mesh above) -> camera -> gripper,
+       in series. add_gripper is left false here on purpose: the G2
+       gripper is instead attached explicitly below, offset past the
+       camera+stand's own 30mm depth, because xarm_device_macro.xacro
+       hardcodes the gripper's attach_xyz/attach_rpy at "0 0 0" with no
+       parameter to override it from out here, which would otherwise
+       plant the gripper's base mesh 30mm deep inside the camera stand
+       (both attaching directly to link_eef, which IS the camera+stand
+       body when add_realsense_d435i is on). Calling xarm_gripper_macro
+       ourselves avoids touching the vendored xarm_ros2 submodule for
+       this. -->
   <xacro:include filename="$(find xarm_description)/urdf/xarm_device_macro.xacro" />
   <xacro:xarm_device
     prefix="$(arg prefix)"
@@ -118,7 +135,32 @@
     robot_ip="$(arg robot_ip)"
     load_gazebo_plugin="false"
     model1300="true"
-    add_gripper="true"
+    add_realsense_d435i="true"
+    add_gripper="false"
+  />
+
+  <!-- G2 gripper, attached explicitly here (not via xarm_device's own
+       add_gripper) so it can be offset past the camera+stand's 30mm
+       depth instead of overlapping it at link_eef; see the comment on
+       the xarm_device call above. Same macro xarm_device would have
+       called internally; ros2_control_plugin/dof match what was passed
+       there, hard_interface left at its default (PositionJointInterface,
+       matching effort_control=false/velocity_control=false, xarm_device's
+       own defaults, which the arm above also used). common.link.xacro
+       needs its own explicit include here: xarm_device_macro.xacro
+       includes it too, but that's nested inside xarm_device's own macro
+       body, so the macro definitions it provides (common_link_visual
+       etc., which xarm_gripper_urdf.xacro needs) don't leak out to this
+       scope, unlike properties declared scope="parent". -->
+  <xacro:include filename="$(find xarm_description)/urdf/common/common.link.xacro" />
+  <xacro:include filename="$(find xarm_description)/urdf/gripper/xarm_gripper_macro.xacro" />
+  <xacro:xarm_gripper_macro
+    prefix="$(arg prefix)"
+    attach_to="$(arg prefix)link_eef"
+    attach_xyz="0 0 0.03"
+    attach_rpy="0 0 0"
+    ros2_control_plugin="$(arg ros2_control_plugin)"
+    dof="6"
     gripper_version="G2"
   />
 
