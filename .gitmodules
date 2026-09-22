@@ -11,3 +11,9 @@
 	path = gz_ros2_control
 	url = https://github.com/ros-controls/gz_ros2_control.git
 	branch = humble
+[submodule "Livox-SDK2"]
+	path = Livox-SDK2
+	url = https://github.com/Livox-SDK/Livox-SDK2.git
+[submodule "livox_ros_driver2"]
+	path = livox_ros_driver2
+	url = https://github.com/Livox-SDK/livox_ros_driver2.git
