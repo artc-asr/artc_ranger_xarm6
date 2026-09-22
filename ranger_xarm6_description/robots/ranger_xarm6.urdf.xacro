@@ -290,6 +290,192 @@
     </gazebo>
   </xacro:if>
 
+  <!-- Two frame-mounted RealSense D435i cameras, per
+       RM_Version_1.2_production.step's "Camera_module_for_design"
+       cluster: "Realsense_Camera_module v2" and
+       "Realsense_Camera_module v1(Mirror)(Mirror)" sit at the EXACT same
+       point (checked: 0.0mm position difference) and differ only by a
+       180deg rotation about one axis, i.e. not two unresolved design
+       variants of one camera like the rest of that cluster (folded into
+       extras_link) turned out to be, but two real cameras mounted
+       back-to-back at the same point, facing opposite directions. Final
+       intended hardware, per instruction: 2x D435i here (this block) +
+       1x Orbbec Gemini 2 on the wrist (replacing the arm's own camera
+       eventually, software-side only for now, keeping the D435i mesh
+       there via add_realsense_d435i above until Gemini's own ROS
+       packages are wired up).
+       Position/rotation derived the same way as extras_link/
+       mount_plate_link: STEP-measured offset from the xArm-Mounting
+       plate's own native origin, composed with the current (user-tuned)
+       mount_plate_xyz/rpy.
+       Built from xarm_description's own d435i_urdf/realsense_gz macros
+       (same ones the wrist camera above uses) rather than a plain
+       mesh, so these are fully functional Gazebo camera sensors, not
+       just decoration; needs its own explicit includes here since
+       those macros were only pulled in earlier INSIDE xarm_device's own
+       macro body (out of scope for us, same issue common.link.xacro /
+       xarm_gripper_macro.xacro had). Each needs a distinct prefix to
+       avoid colliding with the arm's own link_eef/camera_link names;
+       d435i_urdf hardcodes its camera body link as "${prefix}link_eef"
+       (an odd name to inherit for a base-mounted camera that isn't an
+       end-effector, but that's the vendored macro's own naming, kept
+       for consistency rather than forking it). -->
+  <xacro:include filename="$(find xarm_description)/urdf/camera/realsense_d435i.urdf.xacro" />
+  <xacro:include filename="$(find xarm_description)/urdf/common/common.material.xacro" />
+  <xacro:property name="fixed_cam_xyz" value="0.142000 0 0.063120" />
+  <xacro:property name="fixed_cam1_rpy" value="1.570796 0 -1.570796" />
+  <xacro:property name="fixed_cam2_rpy" value="1.570796 0 1.570796" />
+
+  <!-- common_material defines "${prefix}Silver" etc.; the arm's own call
+       (inside xarm_device above) only covers "$(arg prefix)Silver", not
+       these cameras' own fixed_camN_ prefixes, so d435i_urdf's visual
+       mesh material reference would otherwise be left undefined. -->
+  <xacro:common_material prefix="$(arg prefix)fixed_cam1_" />
+  <xacro:common_material prefix="$(arg prefix)fixed_cam2_" />
+
+  <xacro:d435i_urdf prefix="$(arg prefix)fixed_cam1_" add_d435i_links="true" />
+  <joint name="$(arg prefix)fixed_cam1_joint" type="fixed">
+    <parent link="$(arg prefix)base_link" />
+    <child link="$(arg prefix)fixed_cam1_link_eef" />
+    <origin xyz="${fixed_cam_xyz}" rpy="${fixed_cam1_rpy}" />
+  </joint>
+
+  <xacro:d435i_urdf prefix="$(arg prefix)fixed_cam2_" add_d435i_links="true" />
+  <joint name="$(arg prefix)fixed_cam2_joint" type="fixed">
+    <parent link="$(arg prefix)base_link" />
+    <child link="$(arg prefix)fixed_cam2_link_eef" />
+    <origin xyz="${fixed_cam_xyz}" rpy="${fixed_cam2_rpy}" />
+  </joint>
+
+  <!-- Sensor tags only (no Sensors-system <plugin> block): realsense_gz
+       (realsense.gazebo.xacro) bundles BOTH the per-camera sensor
+       declarations AND the world-wide gz::sim::systems::Sensors plugin
+       registration in one macro, so calling it here as-is per camera
+       would (and, tested, did) re-register that system a 2nd and 3rd
+       time on top of the wrist camera's own call inside xarm_device,
+       hitting the exact same "Another item already exists with name:
+       scene" Ogre2 crash tested_world.world's own duplicate copy caused
+       earlier (see that file's comment). One Sensors registration
+       (still xarm_device's, for the wrist camera) covers the whole
+       simulation; these two only need the sensor tags themselves. -->
+  <xacro:macro name="fixed_cam_sensor_tags" params="prefix">
+    <gazebo reference="${prefix}camera_depth_frame">
+      <sensor name="${prefix}cameradepth" type="rgbd_camera">
+        <camera name="${prefix}camera">
+          <horizontal_fov>1.57</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>L8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <depth_camera>
+            <clip>
+              <near>0.1</near>
+              <far>10</far>
+            </clip>
+          </depth_camera>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.100</stddev>
+          </noise>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>0</visualize>
+        <topic>${prefix}camera/depth</topic>
+      </sensor>
+    </gazebo>
+    <gazebo reference="${prefix}camera_color_frame">
+      <sensor name="${prefix}cameracolor" type="camera">
+        <camera name="${prefix}camera">
+          <horizontal_fov>1.57</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>RGB_INT8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+          <camera_info_topic>${prefix}camera/color/camera_info</camera_info_topic>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>1</visualize>
+        <topic>${prefix}camera/color/image_raw</topic>
+        <enable_metrics>true</enable_metrics>
+      </sensor>
+    </gazebo>
+    <gazebo reference="${prefix}camera_left_ir_frame">
+      <sensor name="${prefix}cameraired1" type="camera">
+        <camera name="${prefix}camera">
+          <horizontal_fov>1.57</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>L_INT8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.05</stddev>
+          </noise>
+          <camera_info_topic>${prefix}camera/infra1/camera_info</camera_info_topic>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>0</visualize>
+        <topic>${prefix}camera/infra1/image_raw</topic>
+      </sensor>
+    </gazebo>
+    <gazebo reference="${prefix}camera_right_ir_frame">
+      <sensor name="${prefix}cameraired2" type="camera">
+        <camera name="${prefix}camera">
+          <horizontal_fov>1.57</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>L_INT8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.05</stddev>
+          </noise>
+          <camera_info_topic>${prefix}camera/infra2/camera_info</camera_info_topic>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>0</visualize>
+        <topic>${prefix}camera/infra2/image_raw</topic>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:if value="${_is_gz_sim}">
+    <xacro:fixed_cam_sensor_tags prefix="$(arg prefix)fixed_cam1_" />
+    <xacro:fixed_cam_sensor_tags prefix="$(arg prefix)fixed_cam2_" />
+  </xacro:if>
+
   <!-- State-only ros2_control interface for the base's 4 steering + 4 wheel
        joints (see ranger_mini_v3.xacro's own header comment: they're left
        passive, no command interface / drive plugin; driving the base is
