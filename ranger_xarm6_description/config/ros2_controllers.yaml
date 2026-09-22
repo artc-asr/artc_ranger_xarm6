@@ -1,0 +1,36 @@
+# ros2_control controller set for the xArm6 arm on Ranger Mini 3.0.
+#
+# Deliberately does NOT define a joint-trajectory controller: wbcc_controller
+# (wbc.py) drives the arm as a velocity-controlled joint group, publishing
+# Float64MultiArray to '<ns>/arm_velocity_controller/commands', exactly like
+# the Theron/Kairos UR5e setups already in this workspace. Joint names below
+# are unprefixed ('joint1'..'joint6') -- ranger_xarm6.launch.py prefixes them
+# with the robot_id at launch time (see _prefix_controller_joints there) so
+# they match wbc.py's '{ns}_joint1'..'{ns}_joint6' expectation. The two
+# top-level controller names (joint_state_broadcaster, arm_velocity_controller)
+# are intentionally left unprefixed -- wbc.py and this launch's spawner calls
+# both assume those exact names, namespaced only by the node namespace.
+#
+# Used identically for sim (gz_ros2_control/GazeboSimSystem) and real hardware
+# (uf_robot_hardware/UFRobotSystemHardware) -- only the ros2_control hardware
+# plugin differs between the two, not this controller set.
+controller_manager:
+  ros__parameters:
+    update_rate: 1000
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    arm_velocity_controller:
+      type: velocity_controllers/JointGroupVelocityController
+
+arm_velocity_controller:
+  ros__parameters:
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+      - joint5
+      - joint6
+    interface_name: velocity

@@ -1,0 +1,120 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Cell Size: 1
+      Line Style:
+        Line Width: 0.03
+        Value: Lines
+      Color: 160; 160; 164
+      Value: true
+
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+      Show Names: false
+      Show Axes: true
+      Show Arrows: false
+      Marker Scale: 0.3
+      Value: true
+
+    # Relative topic 'robot_description' -- resolves under this node's own
+    # namespace (rviz2 is launched with namespace=<robot_id>, see
+    # ranger_xarm6.launch.py), same convention robotnik used before removal.
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Description Source: Topic
+      Description Topic:
+        Value: robot_description
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Visual Enabled: true
+      Collision Enabled: false
+      Alpha: 1
+      TF Prefix: ""
+      Value: true
+
+    # Global (not namespaced) topic -- matches wbcc_bringup/visualize_world.py
+    # publishing the wall marker on the plain '/visualization_marker' topic.
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Wall Marker
+      Topic:
+        Value: /visualization_marker
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Value: true
+
+    # Global (not namespaced) topic -- matches wbcc_path/path_publisher.py,
+    # which is launched without a namespace (see simulation.launch.py) the
+    # same way Robotnik's own rviz_config.rviz displayed it (same topic,
+    # same green) before that package was removed from this branch.
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Path
+      Alpha: 1
+      Buffer Length: 1
+      Color: 25; 255; 0
+      Line Style: Lines
+      Line Width: 0.03
+      Pose Style: None
+      Topic:
+        Value: /path_topic
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Value: true
+
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: robot_a_odom
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 3.5
+      Focal Point:
+        X: 1
+        Y: 0
+        Z: 0.5
+      Pitch: 0.4
+      Yaw: 0.8
+      Near Clip Distance: 0.01
+      Invert Z Axis: false
+      Target Frame: <Fixed Frame>
+    Saved: ~
+
+Window Geometry:
+  Height: 900
+  Width: 1400
+  X: 60
+  Y: 60
+  Displays:
+    collapsed: false
+  Views:
+    collapsed: false

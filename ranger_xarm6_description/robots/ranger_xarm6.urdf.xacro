@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ranger Mini 3.0 + xArm6 mobile manipulator description, used for both
+  Gazebo Harmonic simulation and real hardware (see ranger_xarm6.launch.py,
+  'sim' argument).
+
+  Composes ranger_mini_v3_description (base) and xarm_description (arm),
+  following the same "base macro + arm macro + fixed mount origin" pattern
+  already used in this workspace for rbtheron_plus.urdf.xacro (see
+  src/robotnik/robotnik_description/robots/rbtheron/rbtheron_plus.urdf.xacro).
+
+  The arm's ros2_control interface ('arm_velocity_controller', see
+  config/ros2_controllers.yaml) matches what wbcc_controller/wbc.py expects
+  for Theron/Kairos's UR5e arm, so wbc.py needs no changes to drive this
+  arm. The mobile base still has no ros2_control command interface for its
+  wheels (only the state-only block below, for RobotModel/TF); real
+  hardware drive is separate follow-up work
+  (ranger_bringup/westonrobot_ranger_ros2, vendored, untested). Simulation
+  driving IS wired up, just not through this URDF: see
+  launch/ranger_xarm6.launch.py's base_pose_publisher.py, a kinematic
+  (not physics-based) stand-in that integrates wbc.py's cmd_vel directly
+  and teleports the Gazebo entity, bypassing wheel-level control entirely.
+-->
+<robot name="ranger_xarm6" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="prefix" default="" />
+  <!-- Undecorated robot_id (no trailing underscore), used only to namespace
+       the Gazebo gz_ros2_control plugin block below; kept separate from
+       'prefix' (which DOES have the trailing underscore baked in for link/
+       joint names) because the plugin's <ros><namespace> tag wants a plain
+       namespace segment, not a name-prefix string. -->
+  <xacro:arg name="robot_namespace" default="" />
+  <xacro:arg name="ros2_control_params" default="" />
+  <!-- sim (default): gz_ros2_control/GazeboSimSystem. xarm_device_macro's
+       own built-in gazebo-plugin support (load_gazebo_plugin) has no
+       namespace option, so it's always left off here and we emit our own
+       <gazebo><plugin> block below instead (with a <ros><namespace> tag),
+       matching the pattern robotnik_description uses for Theron/Kairos:
+       see src/robotnik/robotnik_description/simulators/gazebo_ignition/
+       rbtheron/rbtheron_control.urdf.xacro.
+       real hardware: ros2_control_plugin:=uf_robot_hardware/UFRobotSystemHardware,
+       robot_ip:=<arm IP>; no Gazebo plugin involved either way.
+       See ranger_xarm6.launch.py, sim:=false path. -->
+  <xacro:arg name="ros2_control_plugin" default="gz_ros2_control/GazeboSimSystem" />
+  <xacro:arg name="robot_ip" default="" />
+
+  <!-- ====================================================================
+       FT: base -> arm mount transform, corrected from Gazebo visual
+       inspection after the STEP-derived heights kept turning out wrong.
+       x=-0.2185 (from the mounting-plate geometry in
+       RM_Version_1.2_production.step) checked out visually. z, however,
+       was wrong at 0.25368 (mount plate height relative to the STEP CAD's
+       "Ranger Mini 3.0" node origin), that STEP node's own origin isn't
+       the same reference point as this package's base_link (base_link
+       sits near the top of the chassis per ranger_mini_v3.xacro's
+       collision box / visual mesh; the STEP node's origin is lower, deeper
+       inside the chassis body), so the two aren't directly comparable
+       without correcting for that offset. z set to 0.024 (24mm) per direct
+       visual correction in Gazebo (arm was floating too high). Yaw set to
+       180 degrees, also per visual correction. Still not a hardware
+       measurement, treat as provisional until the real mount is
+       physically measured or the arm's true orientation is confirmed
+       against the ARTC handover note.
+       Kept numerically in sync with arm_base_joint's origin in
+       urdf/ranger_xarm6.urdf.
+       ==================================================================== -->
+  <xacro:property name="arm_mount_xyz" value="-0.218500 0.000000 0.024000" />
+  <xacro:property name="arm_mount_rpy" value="0 0 3.141593" />
+
+  <!-- Base: Ranger Mini 3.0 -->
+  <xacro:include filename="$(find ranger_mini_v3_description)/urdf/ranger_mini_v3.xacro" />
+  <xacro:ranger_mini_v3 prefix="$(arg prefix)" />
+
+  <!-- Arm: xArm6, mounted on the base via the placeholder FT above -->
+  <xacro:include filename="$(find xarm_description)/urdf/xarm_device_macro.xacro" />
+  <xacro:xarm_device
+    prefix="$(arg prefix)"
+    dof="6"
+    robot_type="xarm"
+    hw_ns="xarm"
+    attach_to="$(arg prefix)base_link"
+    attach_xyz="${arm_mount_xyz}"
+    attach_rpy="${arm_mount_rpy}"
+    create_attach_link="false"
+    ros2_control_plugin="$(arg ros2_control_plugin)"
+    ros2_control_params="$(arg ros2_control_params)"
+    robot_ip="$(arg robot_ip)"
+    load_gazebo_plugin="false"
+  />
+
+  <xacro:property name="_is_gz_sim" value="${'$(arg ros2_control_plugin)' == 'gz_ros2_control/GazeboSimSystem'}" />
+  <xacro:if value="${_is_gz_sim}">
+    <gazebo>
+      <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>$(arg ros2_control_params)</parameters>
+        <ros>
+          <namespace>/$(arg robot_namespace)</namespace>
+        </ros>
+      </plugin>
+    </gazebo>
+  </xacro:if>
+
+  <!-- State-only ros2_control interface for the base's 4 steering + 4 wheel
+       joints (see ranger_mini_v3.xacro's own header comment: they're left
+       passive, no command interface / drive plugin; driving the base is
+       still separate follow-up work, unchanged by this). Without any
+       ros2_control interface, nothing ever published these joints' state,
+       so robot_state_publisher had no value for them and couldn't compute
+       their TF: RViz's RobotModel display then has no transform for the
+       wheel/steering links and hides them entirely (not just "not moving",
+       genuinely absent). Declaring them here with state_interface only (no
+       command_interface, no new controller) lets gz_ros2_control's
+       GazeboSimSystem report their actual simulated pose, picked up by
+       the same joint_state_broadcaster the arm already uses (it publishes
+       every joint from every claimed hardware interface by default, see
+       config/ros2_controllers.yaml: no 'joints' list there means "all of
+       them"), so the wheels/steering render (static, since nothing drives
+       them yet) instead of disappearing. Real hardware isn't affected:
+       this whole block is gz-sim-only (_is_gz_sim), same as the plugin
+       block above.
+  -->
+  <xacro:if value="${_is_gz_sim}">
+    <ros2_control name="RangerBaseState" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </hardware>
+      <xacro:macro name="_passive_wheel_joint" params="name">
+        <joint name="$(arg prefix)${name}">
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+        </joint>
+      </xacro:macro>
+      <xacro:_passive_wheel_joint name="fl_steering_joint"/>
+      <xacro:_passive_wheel_joint name="fl_wheel"/>
+      <xacro:_passive_wheel_joint name="fr_steering_joint"/>
+      <xacro:_passive_wheel_joint name="fr_wheel"/>
+      <xacro:_passive_wheel_joint name="rl_steering_joint"/>
+      <xacro:_passive_wheel_joint name="rl_wheel"/>
+      <xacro:_passive_wheel_joint name="rr_steering_joint"/>
+      <xacro:_passive_wheel_joint name="rr_wheel"/>
+    </ros2_control>
+  </xacro:if>
+
+  <!-- F/T SENSOR (Gazebo simulation only). Assumed present for this
+       integration, per instruction: treat sim force/contact behaviour as
+       real. On actual hardware this must instead come from xArm6's optional
+       F/T sensor accessory (see ranger_xarm6.launch.py's sim:=false path,
+       which remaps 'uf_ftsensor_ext_states'); whether this physical unit
+       has that accessory installed is unconfirmed (not itemised in the ARTC
+       handover note), so don't assume the sim behaviour carries over to
+       hardware without checking. Mirrors the same gz-sim force_torque
+       sensor + flat 'force_torque' topic convention robotnik_description
+       uses at UR5e's wrist_3 for Theron/Kairos (see rbtheron_plus.urdf.xacro),
+       so wbc.py's force_torque_callback needs no changes either way. -->
+  <xacro:if value="${_is_gz_sim}">
+    <gazebo reference="$(arg prefix)joint6">
+      <sensor name="force_torque_sensor" type="force_torque">
+        <always_on>true</always_on>
+        <update_rate>500</update_rate>
+        <visualize>true</visualize>
+        <topic>force_torque</topic>
+        <force_torque>
+          <frame>sensor</frame>
+          <measure_direction>child_to_parent</measure_direction>
+        </force_torque>
+      </sensor>
+    </gazebo>
+  </xacro:if>
+
+</robot>
