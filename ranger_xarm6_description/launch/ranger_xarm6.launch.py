@@ -677,14 +677,23 @@ def launch_setup(context, *args, **kwargs):
         # '/{robot_id}/wrist_camera/...', matching exactly what the sim-side
         # wrist_camera_bridge remaps gz's topics onto above.
         # publish_tf:false: same reasoning as the D435i's/'s above -- this
-        # URDF's existing wrist camera frame chain (camera_link/
-        # camera_depth_frame/etc, from xarm_device's add_realsense_d435i)
-        # already gets broadcast by robot_state_publisher.
-        # cloud_frame_id: pointed at camera_depth_frame (see
-        # wrist_camera_sensor_tags' own sim-side comment on why depth uses
-        # the physical, not optical, frame there) so the point cloud's
-        # frame_id matches what this URDF actually publishes TF for --
-        # this is the one frame override gemini2.launch.py exposes; see the
+        # URDF's existing wrist camera frame chain (camera_link, from
+        # xarm_device's add_realsense_d435i, plus the gemini_* extrinsics
+        # frames orbbec_gemini2_extrinsics adds on top of it) already gets
+        # broadcast by robot_state_publisher.
+        # cloud_frame_id: pointed at gemini_depth_frame, NOT xarm's own
+        # camera_depth_frame -- since this repo started using Orbbec's real
+        # measured extrinsics for the wrist camera (see
+        # orbbec_gemini2_extrinsics in ranger_xarm6.urdf.xacro) rather than
+        # xarm_description's borrowed D435i ones, gemini_depth_frame is the
+        # one that's actually correct for a real Gemini 2's point cloud.
+        # Same "physical, not optical" reasoning as fixed_cam_sensor_tags'
+        # own depth sensor for why *sim* uses the physical frame there;
+        # this is real hardware though, where the real orbbec_camera driver
+        # should already publish in the proper optical convention -- so if
+        # this needs revisiting, it's specifically because that assumption
+        # turned out wrong on the real device, not the sim-side quirk.
+        # This is the one frame override gemini2.launch.py exposes; see the
         # enable_wrist_camera comment above for the color/infra1/infra2
         # caveat this doesn't cover.
         gemini2_launch_path = PathJoinSubstitution(
@@ -697,7 +706,7 @@ def launch_setup(context, *args, **kwargs):
                 'serial_number': LaunchConfiguration('wrist_camera_serial'),
                 'enable_point_cloud': 'true',
                 'publish_tf': 'false',
-                'cloud_frame_id': f'{prefix}camera_depth_frame',
+                'cloud_frame_id': f'{prefix}gemini_depth_frame',
             }.items(),
         )
         wrist_camera_launches.append(

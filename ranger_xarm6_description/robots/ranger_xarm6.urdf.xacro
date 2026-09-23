@@ -657,8 +657,65 @@
        needed: xarm's own realsense_gz call (still active, add_d435i_links
        unchanged) already registered it once, same reason
        fixed_cam_sensor_tags' own sensor tags don't re-register it either. -->
+  <!-- Real Orbbec Gemini 2 extrinsics (depth/color/left_ir/right_ir
+       spacing), NOT xarm_description's borrowed D435i ones: per
+       instruction, mesh stays the D435i+stand placeholder (kept as
+       camera_link, unchanged, still parented to link_eef via
+       xarm_device's own camera_link_joint) but the actual sensor-to-
+       sensor geometry these frames encode should reflect the real
+       hardware. Pulled directly from ros-humble-orbbec-description's
+       gemini_2.urdf.xacro (installed on this machine), which ships real
+       measured joint origins, not placeholders; composed onto
+       camera_link directly rather than copying that file's own
+       parent chain verbatim: its camera_color_joint/camera_right_ir_joint
+       parent from camera_depth_frame, but that frame is itself
+       xyz="0 0 0" rpy="0 0 0" relative to camera_link (see its own
+       camera_depth_joint), i.e. an identity transform, so composing
+       through it or going straight to camera_link gives identical
+       numbers either way; straight to camera_link is simpler and avoids
+       needing a whole separate depth_frame-as-parent link just to prove
+       that to a future reader.
+       New, distinctly-named frames (gemini_*), NOT overriding
+       xarm_description's own camera_depth_frame/camera_color_frame/
+       camera_left_ir_frame/camera_right_ir_frame in place: those are
+       created by the same d435i_urdf macro that adds the mesh (tied to
+       the SAME add_realsense_d435i/add_d435i_links flags, no override
+       hook), and xarm_ros2 is a git submodule this repo's own established
+       practice already avoids editing (see wrist_camera_sensor_tags' own
+       comment below on the exact same constraint for its sensor tags).
+       xarm's own camera_*_frame links stay in the tree, unused now (no
+       sensor tags reference them any more), same "small accepted cost,
+       not worth a submodule edit" tradeoff already made for the
+       duplicate sensor registration. -->
+  <xacro:macro name="orbbec_gemini2_extrinsics" params="prefix">
+    <xacro:macro name="_gemini_frame" params="name xyz">
+      <joint name="${prefix}gemini_${name}_joint" type="fixed">
+        <origin xyz="${xyz}" rpy="0 0 0" />
+        <parent link="${prefix}camera_link" />
+        <child link="${prefix}gemini_${name}_frame" />
+      </joint>
+      <link name="${prefix}gemini_${name}_frame" />
+      <joint name="${prefix}gemini_${name}_optical_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
+        <parent link="${prefix}gemini_${name}_frame" />
+        <child link="${prefix}gemini_${name}_optical_frame" />
+      </joint>
+      <link name="${prefix}gemini_${name}_optical_frame" />
+    </xacro:macro>
+    <!-- depth and left_ir are coincident (0,0,0) in Orbbec's own file too,
+         same "depth derives from one IR sensor" convention D435i uses. -->
+    <xacro:_gemini_frame name="depth" xyz="0 0 0" />
+    <xacro:_gemini_frame name="left_ir" xyz="0 0 0" />
+    <xacro:_gemini_frame name="right_ir" xyz="0 -0.05000000074505806 0" />
+    <xacro:_gemini_frame name="color" xyz="0.0019099999917671084 -0.01400499977171421 4.999999873689376e-06" />
+  </xacro:macro>
+
+  <xacro:if value="${_is_gz_sim}">
+    <xacro:orbbec_gemini2_extrinsics prefix="$(arg prefix)" />
+  </xacro:if>
+
   <xacro:macro name="wrist_camera_sensor_tags" params="prefix">
-    <gazebo reference="${prefix}camera_depth_frame">
+    <gazebo reference="${prefix}gemini_depth_frame">
       <sensor name="${prefix}wristcameradepth" type="rgbd_camera">
         <camera name="${prefix}wristcamera">
           <!-- Physical, not optical, frame: same gz-sim rgbd_camera
@@ -669,7 +726,7 @@
                to re-derive it, though this specific sensor's point cloud
                hasn't been separately re-verified against known world
                geometry the way fixed_cam1's was. -->
-          <optical_frame_id>${prefix}camera_depth_frame</optical_frame_id>
+          <optical_frame_id>${prefix}gemini_depth_frame</optical_frame_id>
           <horizontal_fov>1.57</horizontal_fov>
           <image>
             <width>1280</width>
@@ -698,10 +755,10 @@
         <topic>${prefix}wrist_camera/depth</topic>
       </sensor>
     </gazebo>
-    <gazebo reference="${prefix}camera_color_frame">
+    <gazebo reference="${prefix}gemini_color_frame">
       <sensor name="${prefix}wristcameracolor" type="camera">
         <camera name="${prefix}wristcamera">
-          <optical_frame_id>${prefix}camera_color_optical_frame</optical_frame_id>
+          <optical_frame_id>${prefix}gemini_color_optical_frame</optical_frame_id>
           <horizontal_fov>1.57</horizontal_fov>
           <image>
             <width>1280</width>
@@ -726,16 +783,18 @@
         <enable_metrics>true</enable_metrics>
       </sensor>
     </gazebo>
-    <!-- Reference links are camera_left_ir_frame/camera_right_ir_frame
-         (xarm_description's own d435i_urdf naming), but topics/optical
-         frames below still say "infra1"/"infra2": matching xarm's own
-         realsense_gz macro's identical left=infra1/right=infra2 convention
-         (and fixed_cam_sensor_tags'), so downstream consumers see the same
+    <!-- Reference links are the new gemini_left_ir_frame/gemini_right_ir_frame
+         (this macro's own orbbec_gemini2_extrinsics, above; left/right
+         naming kept consistent with xarm_description's own d435i_urdf
+         convention it replaces), but topics/optical frames below still say
+         "infra1"/"infra2": matching xarm's own realsense_gz macro's
+         identical left=infra1/right=infra2 convention (and
+         fixed_cam_sensor_tags'), so downstream consumers see the same
          topic shape regardless of which camera it's from. -->
-    <gazebo reference="${prefix}camera_left_ir_frame">
+    <gazebo reference="${prefix}gemini_left_ir_frame">
       <sensor name="${prefix}wristcameraired1" type="camera">
         <camera name="${prefix}wristcamera">
-          <optical_frame_id>${prefix}camera_left_ir_optical_frame</optical_frame_id>
+          <optical_frame_id>${prefix}gemini_left_ir_optical_frame</optical_frame_id>
           <horizontal_fov>1.57</horizontal_fov>
           <image>
             <width>1280</width>
@@ -759,10 +818,10 @@
         <topic>${prefix}wrist_camera/infra1/image_raw</topic>
       </sensor>
     </gazebo>
-    <gazebo reference="${prefix}camera_right_ir_frame">
+    <gazebo reference="${prefix}gemini_right_ir_frame">
       <sensor name="${prefix}wristcameraired2" type="camera">
         <camera name="${prefix}wristcamera">
-          <optical_frame_id>${prefix}camera_right_ir_optical_frame</optical_frame_id>
+          <optical_frame_id>${prefix}gemini_right_ir_optical_frame</optical_frame_id>
           <horizontal_fov>1.57</horizontal_fov>
           <image>
             <width>1280</width>
