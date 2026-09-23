@@ -380,8 +380,8 @@
        Rz(-pi/2) maps it to -Y (right); left_camera looks toward the
        robot's left, right_camera toward its right, matching their names
        and fixed_cam1's own rpy=0/+X as the "front" reference direction. -->
-  <xacro:property name="left_camera_xyz" value="0.142000 0.034949 0.378500" />
-  <xacro:property name="right_camera_xyz" value="0.142000 -0.034949 0.378500" />
+  <xacro:property name="left_camera_xyz" value="0.142000 0.059898 0.398500" />
+  <xacro:property name="right_camera_xyz" value="0.142000 -0.059898 0.398500" />
   <xacro:property name="left_camera_rpy" value="0 0 1.570796" />
   <xacro:property name="right_camera_rpy" value="0 0 -1.570796" />
 
@@ -399,6 +399,20 @@
     </joint>
     <link name="${name}_link">
       <visual>
+        <!-- Roll +pi/2 about the link's own local X (its view direction,
+             same axis ${name}_optical_joint derives the optical frame
+             from): rotates the SHAPE only, not the link/joint/optical
+             frame themselves, so the camera's actual mount orientation and
+             TF are untouched by this. Box is (X=0.030, Y=0.020, Z=0.030)
+             before this roll, so X (view direction, already correct) and Z
+             (0.030, "long") swap with Y (0.020, "short"): since each
+             camera's own mount joint above is a pure yaw (see
+             left_camera_rpy/right_camera_rpy), un-rolled local Y maps to
+             world's front-rear (X) axis and local Z to world-up, i.e.
+             the SHORT edge would land front-rear and the LONG edge
+             vertical. This roll swaps that: long edge -> front-rear axis,
+             short edge -> vertical, per instruction. -->
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0" />
         <geometry>
           <!-- Placeholder dimensions (30x20x30mm): generic small UVC
                board-camera size estimate, not a measured SincereFirst
@@ -410,6 +424,7 @@
         </material>
       </visual>
       <collision>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0" />
         <geometry>
           <box size="0.030 0.020 0.030" />
         </geometry>
