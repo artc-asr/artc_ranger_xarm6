@@ -98,28 +98,33 @@
        the plain xarm_description default to end_tool/visual/collision
        end_tool_1300.stl, xarm_description's actual model of the
        F/T-sensor-equipped tool flange (see xarm6.urdf.xacro's
-       model_num >= 1300 branch), a single combined mesh, no separate
-       F/T sensor accessory mesh exists to add on top of it.
-       add_realsense_d435i="true": adds the wrist-mounted RealSense
-       D435i (own link_eef body with the d435_with_cam_stand mesh,
-       camera_depth/color/left_ir/right_ir frames, and, since
-       ros2_control_plugin is gz_ros2_control/GazeboSimSystem here,
-       the Harmonic-native realsense_gz sensor plugin), i.e. NOT
-       use_gazebo_camera/camera_gazebo, a different, unrelated legacy
-       fixture (hardcoded on link_base, Gazebo-Classic-only
-       libgazebo_ros_camera.so plugin, incompatible with Harmonic).
-       Intended physical stack, per instruction: link6 (F/T sensor,
-       built into the end_tool_1300 mesh above) -> camera -> gripper,
-       in series. add_gripper is left false here on purpose: the G2
-       gripper is instead attached explicitly below, offset past the
-       camera+stand's own 30mm depth, because xarm_device_macro.xacro
-       hardcodes the gripper's attach_xyz/attach_rpy at "0 0 0" with no
-       parameter to override it from out here, which would otherwise
-       plant the gripper's base mesh 30mm deep inside the camera stand
-       (both attaching directly to link_eef, which IS the camera+stand
-       body when add_realsense_d435i is on). Calling xarm_gripper_macro
-       ourselves avoids touching the vendored xarm_ros2 submodule for
-       this. -->
+       model_num >= 1300 branch).
+       add_realsense_d435i="false": the wrist RealSense D435i (mesh,
+       camera_depth/color/left_ir/right_ir frames, realsense_gz sensor
+       plugin) is now built by hand below instead of by xarm_device_macro
+       itself, so an explicit F/T sensor accessory (a cylinder, per
+       instruction: no real F/T sensor mesh exists anywhere UFACTORY
+       publishes it, end_tool_1300.stl above is link6's own tool-flange
+       mesh, not a separate sensor body) can be inserted physically
+       between link6's flange and the camera mount. xarm_device_macro.
+       xacro's own joint_eef (link6 -> link_eef) hardcodes a 0 0 0 origin
+       with no override parameter, so link_eef itself can't be pushed
+       further from link6; instead, link_eef here is now a bare frame
+       (xarm_device_macro's own "unless add_realsense_d435i" branch),
+       and everything add_realsense_d435i="true" used to build
+       automatically (camera mesh, camera_link and its children,
+       realsense_gz's Sensors-system plugin registration) is recreated
+       by hand below, parented past the new F/T sensor cylinder instead
+       of directly at link_eef.
+       Intended physical stack, per instruction: link6 (F/T-sensor-
+       equipped flange mesh) -> F/T sensor accessory (new, below) ->
+       camera -> gripper, in series. add_gripper is left false here on
+       purpose: the G2 gripper is instead attached explicitly below,
+       past camera_mount_link (see that link's own comment), because
+       xarm_device_macro.xacro hardcodes the gripper's attach_xyz/
+       attach_rpy at "0 0 0" with no parameter to override it from out
+       here. Calling xarm_gripper_macro ourselves avoids touching the
+       vendored xarm_ros2 submodule for this. -->
   <xacro:include filename="$(find xarm_description)/urdf/xarm_device_macro.xacro" />
   <xacro:xarm_device
     prefix="$(arg prefix)"
@@ -135,28 +140,152 @@
     robot_ip="$(arg robot_ip)"
     load_gazebo_plugin="false"
     model1300="true"
-    add_realsense_d435i="true"
+    add_realsense_d435i="false"
     add_gripper="false"
   />
 
-  <!-- G2 gripper, attached explicitly here (not via xarm_device's own
-       add_gripper) so it can be offset past the camera+stand's 30mm
-       depth instead of overlapping it at link_eef; see the comment on
-       the xarm_device call above. Same macro xarm_device would have
-       called internally; ros2_control_plugin/dof match what was passed
-       there, hard_interface left at its default (PositionJointInterface,
-       matching effort_control=false/velocity_control=false, xarm_device's
-       own defaults, which the arm above also used). common.link.xacro
-       needs its own explicit include here: xarm_device_macro.xacro
-       includes it too, but that's nested inside xarm_device's own macro
-       body, so the macro definitions it provides (common_link_visual
-       etc., which xarm_gripper_urdf.xacro needs) don't leak out to this
-       scope, unlike properties declared scope="parent". -->
+  <!-- common.link.xacro needs its own explicit include here:
+       xarm_device_macro.xacro includes it too, but that's nested inside
+       xarm_device's own macro body, so the macro definitions it provides
+       (common_link_visual/common_link_collision, used by both the
+       gripper below and camera_mount_link further down) don't leak out
+       to this scope, unlike properties declared scope="parent". -->
   <xacro:include filename="$(find xarm_description)/urdf/common/common.link.xacro" />
+
+  <!-- F/T sensor accessory cylinder: diameter=126mm/height=95mm per
+       instruction, height along the flange direction (local Z, matching
+       every other wrist-stack offset in this file: the gripper's own
+       "0 0 0.003" below, d435i_urdf's own camera_link_joint, etc.).
+       Placeholder mass/inertia (0.9kg, solid-cylinder formula): no real
+       F/T sensor datasheet mass available, same treatment as the HiPNUC
+       IMU's own placeholder inertial above. -->
+  <link name="$(arg prefix)ft_sensor_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.063" length="0.095" />
+      </geometry>
+      <material name="ft_sensor_grey">
+        <color rgba="0.55 0.55 0.55 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.063" length="0.095" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.9" />
+      <inertia ixx="0.00157" ixy="0" ixz="0" iyy="0.00157" iyz="0" izz="0.00179" />
+    </inertial>
+  </link>
+  <joint name="$(arg prefix)ft_sensor_joint" type="fixed">
+    <parent link="$(arg prefix)link_eef" />
+    <child link="$(arg prefix)ft_sensor_link" />
+    <origin xyz="0 0 0.0475" rpy="0 0 0" />
+  </joint>
+
+  <!-- Camera mount: exactly d435i_urdf's own link_eef body (same mesh,
+       same visual/collision), just under a new name and parented past
+       the F/T sensor cylinder instead of directly at link6's flange.
+       xarm_gripper_macro attaches here now (past this mesh's own 30mm
+       depth, matching the pre-existing "0 0 0.003" offset unchanged,
+       since that offset is relative to the mesh's own geometry, not to
+       whichever frame the mesh happens to be bolted to). -->
+  <link name="$(arg prefix)camera_mount_link">
+    <xacro:common_link_visual
+      mesh_filename="camera/realsense/visual/d435_with_cam_stand"
+      origin_xyz="0 0 0"
+      origin_rpy="0 0 0"
+      material_name="$(arg prefix)Silver" />
+    <xacro:common_link_collision
+      mesh_filename="camera/realsense/collision/d435_with_cam_stand"
+      origin_xyz="0 0 0"
+      origin_rpy="0 0 0" />
+  </link>
+  <joint name="$(arg prefix)camera_mount_joint" type="fixed">
+    <parent link="$(arg prefix)ft_sensor_link" />
+    <child link="$(arg prefix)camera_mount_link" />
+    <origin xyz="0 0 0.0475" rpy="0 0 0" />
+  </joint>
+
+  <!-- Exact same frames d435i_urdf's own macro (xarm_description/urdf/
+       camera/realsense_d435i.urdf.xacro) creates when add_d435i_links is
+       on, hand-copied here (not xacro:include'd a second time: that
+       macro hardcodes its mesh-carrying link's own name to
+       "${prefix}link_eef", which would collide with the bare link_eef
+       xarm_device_macro still creates above). Same names, same relative
+       offsets as that macro's own body, only the top parent changed
+       (camera_mount_link, not link_eef): every existing downstream
+       reference to these frame names (wrist_camera_sensor_tags,
+       orbbec_gemini2_extrinsics, RViz, ranger_xarm6.launch.py's wrist
+       camera bridge) keeps working unchanged. -->
+  <link name="$(arg prefix)camera_link"></link>
+  <link name="$(arg prefix)camera_depth_frame"></link>
+  <link name="$(arg prefix)camera_depth_optical_frame"></link>
+  <link name="$(arg prefix)camera_color_frame"></link>
+  <link name="$(arg prefix)camera_color_optical_frame"></link>
+  <link name="$(arg prefix)camera_left_ir_frame"></link>
+  <link name="$(arg prefix)camera_left_ir_optical_frame"></link>
+  <link name="$(arg prefix)camera_right_ir_frame"></link>
+  <link name="$(arg prefix)camera_right_ir_optical_frame"></link>
+  <joint name="$(arg prefix)camera_link_joint" type="fixed">
+    <parent link="$(arg prefix)camera_mount_link" />
+    <child link="$(arg prefix)camera_link" />
+    <origin xyz="0.06746 -0.0175 0.0237" rpy="${pi} ${-pi/2} 0" />
+  </joint>
+  <joint name="$(arg prefix)camera_depth_joint" type="fixed">
+    <parent link="$(arg prefix)camera_link" />
+    <child link="$(arg prefix)camera_depth_frame" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+  <joint name="$(arg prefix)camera_depth_optical_joint" type="fixed">
+    <parent link="$(arg prefix)camera_depth_frame" />
+    <child link="$(arg prefix)camera_depth_optical_frame" />
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
+  </joint>
+  <joint name="$(arg prefix)camera_color_joint" type="fixed">
+    <parent link="$(arg prefix)camera_link" />
+    <child link="$(arg prefix)camera_color_frame" />
+    <origin xyz="0 0.015 0" rpy="0 0 0" />
+  </joint>
+  <joint name="$(arg prefix)camera_color_optical_joint" type="fixed">
+    <parent link="$(arg prefix)camera_color_frame" />
+    <child link="$(arg prefix)camera_color_optical_frame" />
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
+  </joint>
+  <joint name="$(arg prefix)camera_left_ir_joint" type="fixed">
+    <parent link="$(arg prefix)camera_link" />
+    <child link="$(arg prefix)camera_left_ir_frame" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+  <joint name="$(arg prefix)camera_left_ir_optical_joint" type="fixed">
+    <parent link="$(arg prefix)camera_left_ir_frame" />
+    <child link="$(arg prefix)camera_left_ir_optical_frame" />
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
+  </joint>
+  <joint name="$(arg prefix)camera_right_ir_joint" type="fixed">
+    <parent link="$(arg prefix)camera_link" />
+    <child link="$(arg prefix)camera_right_ir_frame" />
+    <origin xyz="0 -0.050 0" rpy="0 0 0" />
+  </joint>
+  <joint name="$(arg prefix)camera_right_ir_optical_joint" type="fixed">
+    <parent link="$(arg prefix)camera_right_ir_frame" />
+    <child link="$(arg prefix)camera_right_ir_optical_frame" />
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
+  </joint>
+
+  <!-- G2 gripper, attached explicitly here (not via xarm_device's own
+       add_gripper) so it can be offset past camera_mount_link's own
+       30mm mesh depth instead of overlapping it; see the comment on the
+       xarm_device call above. Same macro xarm_device would have called
+       internally; ros2_control_plugin/dof match what was passed there,
+       hard_interface left at its default (PositionJointInterface,
+       matching effort_control=false/velocity_control=false,
+       xarm_device's own defaults, which the arm above also used). -->
   <xacro:include filename="$(find xarm_description)/urdf/gripper/xarm_gripper_macro.xacro" />
   <xacro:xarm_gripper_macro
     prefix="$(arg prefix)"
-    attach_to="$(arg prefix)link_eef"
+    attach_to="$(arg prefix)camera_mount_link"
     attach_xyz="0 0 0.003"
     attach_rpy="0 0 0"
     ros2_control_plugin="$(arg ros2_control_plugin)"
@@ -453,6 +582,21 @@
         </ros>
       </plugin>
     </gazebo>
+    <!-- Registers the world-wide gz::sim::systems::Sensors plugin, needed
+         by every rendering sensor in this file (fixed_cam1/2, the two
+         USB cameras, the wrist camera, the Livox lidar). Previously
+         piggybacked on xarm_device's own add_realsense_d435i="true" call
+         (its realsense_gz macro registers the exact same plugin as a
+         side effect); now that add_realsense_d435i is "false" (see the
+         F/T sensor cylinder/camera_mount_link comment above), it has to
+         be registered explicitly instead, exactly matching xarm's own
+         realsense.gazebo.xacro plugin block (filename/name/render_engine
+         all identical) so nothing else in this file needs to change. -->
+    <gazebo>
+      <plugin filename="libgz-sim-sensors-system.so" name="gz::sim::systems::Sensors">
+        <render_engine>ogre2</render_engine>
+      </plugin>
+    </gazebo>
   </xacro:if>
 
   <!-- Two frame-mounted RealSense D435i cameras, per
@@ -467,8 +611,8 @@
        intended hardware, per instruction: 2x D435i here (this block) +
        1x Orbbec Gemini 2 on the wrist (replacing the arm's own camera
        eventually, software-side only for now, keeping the D435i mesh
-       there via add_realsense_d435i above until Gemini's own ROS
-       packages are wired up).
+       there (camera_mount_link above) until Gemini's own ROS packages
+       are wired up).
        Position/rotation derived the same way as extras_link/
        mount_plate_link: STEP-measured offset from the xArm-Mounting
        plate's own native origin, composed with the current (user-tuned)
@@ -799,59 +943,52 @@
        discussion: no combined Gemini2+xArm-mount mesh exists, swapping it
        would drop the mount geometry entirely). Same wiring treatment as
        fixed_cam1/fixed_cam2 (correct optical_frame_id, own topics, bridged
-       + real driver), applied to the wrist's EXISTING D435i frame chain
-       (camera_link/camera_depth_frame/camera_color_frame/camera_left_ir_frame/
-       camera_right_ir_frame, from xarm_device's add_realsense_d435i="true"
-       above, itself unchanged): "lens distance similar, thickness differs"
-       per instruction, i.e. treat it as a D435i-shaped stand-in for now.
+       + real driver), applied to the wrist's camera_link/camera_depth_
+       frame/camera_color_frame/camera_left_ir_frame/camera_right_ir_frame
+       chain (hand-built above, past the F/T sensor cylinder/
+       camera_mount_link, same names as xarm_device's own add_realsense_
+       d435i="true" used to create): "lens distance similar, thickness
+       differs" per instruction, i.e. treat it as a D435i-shaped stand-in
+       for now.
 
-       Deliberately NOT editing xarm_ros2/xarm_description/urdf/camera/
-       realsense.gazebo.xacro to add its own missing optical_frame_id (the
-       same bug fixed_cam_sensor_tags' own comment above documents) :
-       xarm_ros2 is a git submodule (this repo's own established practice
-       already avoids touching it, see xarm_device's add_gripper comment
-       above), and add_d435i_links (default true, unchanged) ties "create
-       these frames" and "register xarm's own broken sensor tags for them"
-       to the same flag with no way to get one without the other. Instead:
-       this macro adds a SEPARATE, correctly-configured sensor set on the
-       SAME existing frames, with distinct sensor names/topics (no
-       collision with xarm's own "${prefix}camera..." ones): xarm's own
-       copy keeps running unused/unbridged alongside (a real but accepted
-       small extra render cost, one wrist camera, in exchange for not
-       touching the submodule). No new Sensors-system plugin registration
-       needed: xarm's own realsense_gz call (still active, add_d435i_links
-       unchanged) already registered it once, same reason
-       fixed_cam_sensor_tags' own sensor tags don't re-register it either. -->
+       No "xarm's own broken sensor tags running unused alongside"
+       tradeoff to make any more (an earlier version of this comment
+       described one): add_realsense_d435i is "false" now (see the F/T
+       sensor cylinder's own comment above), so xarm_ros2's own realsense.
+       gazebo.xacro sensor tags (the ones with the missing-optical_
+       frame_id bug) are never created in the first place, not just left
+       unused: this macro's own sensor set below is the only one. Still
+       not editing realsense.gazebo.xacro directly either way: xarm_ros2
+       is a git submodule, this repo's own established practice already
+       avoids touching it (see xarm_device's add_gripper comment above).
+       No new Sensors-system plugin registration needed here: it's
+       registered explicitly now (see the _is_gz_sim gz_ros2_control
+       plugin block above), not piggybacked on xarm's own realsense_gz
+       call any more. -->
   <!-- Real Orbbec Gemini 2 extrinsics (depth/color/left_ir/right_ir
        spacing), NOT xarm_description's borrowed D435i ones: per
-       instruction, mesh stays the D435i+stand placeholder (kept as
-       camera_link, unchanged, still parented to link_eef via
-       xarm_device's own camera_link_joint) but the actual sensor-to-
-       sensor geometry these frames encode should reflect the real
-       hardware. Pulled directly from ros-humble-orbbec-description's
-       gemini_2.urdf.xacro (installed on this machine), which ships real
-       measured joint origins, not placeholders; composed onto
-       camera_link directly rather than copying that file's own
-       parent chain verbatim: its camera_color_joint/camera_right_ir_joint
-       parent from camera_depth_frame, but that frame is itself
-       xyz="0 0 0" rpy="0 0 0" relative to camera_link (see its own
-       camera_depth_joint), i.e. an identity transform, so composing
-       through it or going straight to camera_link gives identical
-       numbers either way; straight to camera_link is simpler and avoids
-       needing a whole separate depth_frame-as-parent link just to prove
-       that to a future reader.
+       instruction, mesh stays the D435i+stand placeholder (camera_link,
+       parented to camera_mount_link via the hand-built camera_link_joint
+       above) but the actual sensor-to-sensor geometry these frames
+       encode should reflect the real hardware. Pulled directly from
+       ros-humble-orbbec-description's gemini_2.urdf.xacro (installed on
+       this machine), which ships real measured joint origins, not
+       placeholders; composed onto camera_link directly rather than
+       copying that file's own parent chain verbatim: its camera_color_
+       joint/camera_right_ir_joint parent from camera_depth_frame, but
+       that frame is itself xyz="0 0 0" rpy="0 0 0" relative to
+       camera_link (see its own camera_depth_joint), i.e. an identity
+       transform, so composing through it or going straight to
+       camera_link gives identical numbers either way; straight to
+       camera_link is simpler and avoids needing a whole separate
+       depth_frame-as-parent link just to prove that to a future reader.
        New, distinctly-named frames (gemini_*), NOT overriding
-       xarm_description's own camera_depth_frame/camera_color_frame/
-       camera_left_ir_frame/camera_right_ir_frame in place: those are
-       created by the same d435i_urdf macro that adds the mesh (tied to
-       the SAME add_realsense_d435i/add_d435i_links flags, no override
-       hook), and xarm_ros2 is a git submodule this repo's own established
-       practice already avoids editing (see wrist_camera_sensor_tags' own
-       comment below on the exact same constraint for its sensor tags).
-       xarm's own camera_*_frame links stay in the tree, unused now (no
-       sensor tags reference them any more), same "small accepted cost,
-       not worth a submodule edit" tradeoff already made for the
-       duplicate sensor registration. -->
+       camera_depth_frame/camera_color_frame/camera_left_ir_frame/
+       camera_right_ir_frame in place: kept purely for backward
+       compatibility with anything already expecting those exact names
+       (wrist_camera_sensor_tags below, RViz, ranger_xarm6.launch.py),
+       not a submodule constraint any more (those frames are hand-built
+       above now, so renaming them outright was an option this time). -->
   <xacro:macro name="orbbec_gemini2_extrinsics" params="prefix">
     <xacro:macro name="_gemini_frame" params="name xyz">
       <joint name="${prefix}gemini_${name}_joint" type="fixed">
