@@ -9,7 +9,7 @@ install(
 )
 
 install(
-  PROGRAMS scripts/base_pose_publisher.py
+  PROGRAMS scripts/base_pose_publisher.py scripts/fix_imu_frame_id.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

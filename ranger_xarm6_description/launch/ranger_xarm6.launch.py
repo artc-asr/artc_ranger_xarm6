@@ -246,6 +246,15 @@ def launch_setup(context, *args, **kwargs):
     # not line up with this URDF's frame names without further work once
     # real hardware is available to check against.
     enable_wrist_camera = LaunchConfiguration('enable_wrist_camera').perform(context).lower() in ('true', '1', 'yes')
+    # HiPNUC HI14R3-232-000 IMU (see hipnuc_imu_link/hipnuc_imu_data_frame
+    # in ranger_xarm6.urdf.xacro), on top of extras_link. Sim only for now:
+    # bridges the gz IMU sensor to a plain sensor_msgs/Imu topic. Real
+    # hardware isn't wired here yet -- the official HiPNUC ROS2 driver
+    # (hipnuc/products, ros/ros2/hipnuc_imu) needs vendoring as a new git
+    # submodule (its own CMakeLists requires the full repo checkout, not
+    # just the ROS package folder), held pending confirmation rather than
+    # added unprompted.
+    enable_hipnuc_imu = LaunchConfiguration('enable_hipnuc_imu').perform(context).lower() in ('true', '1', 'yes')
     # Shared between sim and real hardware: RViz (RobotModel + TF + the two
     # fixed cameras' point clouds) is the "digital twin" viewer either way,
     # same URDF, same topics either way -- following the standard ROS/Nav2
@@ -516,6 +525,33 @@ def launch_setup(context, *args, **kwargs):
             )
             startup_actions.append(wrist_camera_bridge)
 
+        if enable_hipnuc_imu:
+            # gz-sim's IMU sensor has no optical_frame_id-style override (see
+            # fix_imu_frame_id.py's own docstring), so it always publishes
+            # with an auto-generated, unresolvable scoped entity path as
+            # header.frame_id. Bridge to a "_raw" topic first, then a small
+            # republisher node fixes up the frame_id to the real TF frame
+            # before anything (RViz's Imu display, etc.) consumes it.
+            imu_gz_topic = f'{prefix}hipnuc_imu/data'
+            imu_raw_topic = f'/{robot_id}/hipnuc_imu/data_raw' if robot_id else f'/{imu_gz_topic}_raw'
+            imu_ros_topic = f'/{robot_id}/hipnuc_imu/data' if robot_id else f'/{imu_gz_topic}'
+            imu_frame_id = f'{prefix}hipnuc_imu_data_frame'
+            hipnuc_imu_bridge = Node(
+                package='ros_gz_bridge',
+                executable='parameter_bridge',
+                arguments=[f'/{imu_gz_topic}@sensor_msgs/msg/Imu[gz.msgs.IMU'],
+                remappings=[(f'/{imu_gz_topic}', imu_raw_topic)],
+                output='screen',
+            )
+            hipnuc_imu_frame_fixup = Node(
+                package='ranger_xarm6_description',
+                executable='fix_imu_frame_id.py',
+                arguments=[imu_raw_topic, imu_ros_topic, imu_frame_id],
+                output='screen',
+            )
+            startup_actions.append(hipnuc_imu_bridge)
+            startup_actions.append(hipnuc_imu_frame_fixup)
+
         spawn_entity_node = Node(
             package='ros_gz_sim',
             executable='create',
@@ -747,5 +783,6 @@ def generate_launch_description():
         DeclareLaunchArgument('right_camera_video_device', default_value='/dev/video2', description="real hardware only: right_camera's V4L2 device node -- confirm with `v4l2-ctl --list-devices` on the real unit, this default is a placeholder"),
         DeclareLaunchArgument('enable_wrist_camera', default_value='true', description='Bridge (sim) / launch orbbec_camera (real, ros-humble-orbbec-camera) for the wrist-mounted Orbbec Gemini 2. Mesh stays the D435i+stand placeholder.'),
         DeclareLaunchArgument('wrist_camera_serial', default_value='', description='real hardware only: wrist camera Gemini 2 serial number (only needed if multiple Orbbec devices are ever present at once)'),
+        DeclareLaunchArgument('enable_hipnuc_imu', default_value='true', description='Bridge the gz-sim IMU sensor for the HiPNUC HI14R3-232-000 (mounted on extras_link). Sim only for now -- real hardware driver not wired yet.'),
         OpaqueFunction(function=launch_setup),
     ])

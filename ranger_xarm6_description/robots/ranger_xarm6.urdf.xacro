@@ -272,6 +272,92 @@
     <origin xyz="${extras_xyz}" rpy="${extras_rpy}" />
   </joint>
 
+  <!-- HiPNUC HI14R3-232-000 (9-axis IMU/AHRS: 3-axis gyro + 3-axis accel +
+       3-axis magnetometer, "R3" grade, RS-232, M12 connector variant),
+       mounted on top of extras_link. Real dimensions/mounting pulled from
+       HiPNUC's own HI14 datasheet (docs.hipnuc.com, rev 1.7): M12 variant
+       is 40 x 58.50 x 20mm, 4x d3.20mm mounting holes on a 34 x 39mm
+       pattern, M3 fixing screws, aluminum housing, <75g. No downloadable
+       mesh/CAD exists from HiPNUC publicly (checked: not in the datasheet,
+       not in their Python/C++ product SDKs on GitHub, "3D Step" is listed
+       under "Related Documents" but isn't a direct link): placeholder
+       box using these real measured dimensions, same treatment as the two
+       USB camera modules above.
+
+       "On top of extras_link" computed from that mesh's own actual
+       bounding box (extras_compressed.stl), not guessed: parsed the
+       binary STL directly (min/max vertex Z), giving a local Z half-span
+       of 0.2095m around the mesh's own centered origin, matching
+       extras_xyz's own Z (0.2095), itself derived the same "STEP bbox-
+       center" way per that property's own comment above. So the mesh's
+       real top surface sits at 0.2095 (extras_xyz.z) + 0.2095 (mesh half-
+       height) = 0.4190 in base_link's frame; extras_rpy's own yaw doesn't
+       change this (a pure Z-axis rotation leaves Z spans alone), so this
+       holds regardless of any future retuning of extras_xyz/rpy's X/Y or
+       yaw specifically (only a change to extras_xyz's own Z, or a mesh
+       replacement, would need this height revisited).
+
+       Two frames, same physical-mount/native-sensor-axes split used
+       throughout this file for camera optical frames:
+       hipnuc_imu_link: the MOUNT frame (hosts the visual/collision box).
+       Positioned at extras_link's top surface + half the IMU's own 20mm
+       height (0.2095+0.2095+0.010=0.4290 local Z relative to extras_link,
+       whose own origin is already at that 0.2095 height above base_link).
+       Rotated +90 deg yaw relative to extras_link (which itself carries a
+       -90deg yaw, extras_rpy) so hipnuc_imu_link ends up identity-aligned
+       with base_link (REP103 X-forward/Y-left/Z-up): a deliberate
+       mounting CHOICE (nothing forces this), picked so "IMU nose (see
+       below) points at the robot's own front" is the default; revisit
+       this rotation if the real unit ends up mounted facing another way.
+       hipnuc_imu_data_frame: the SENSOR's own native axis convention,
+       child of hipnuc_imu_link. Per the datasheet's own "10 Coordinate
+       System" section (Figure 30) the HI14 body axes are Right-Forward-Up
+       (X=right, Y=forward/"nose", Z=up), NOT REP103's Forward-Left-Up:
+       a plain yaw won't reconcile the two on its own; the exact rotation
+       (-90deg yaw) is derived in the sensor-tags comment below where it's
+       actually used, since it's identical to the one this frame's own
+       joint applies. This is the frame the real sensor_msgs/Imu data
+       (both sim and the real HiPNUC ROS driver) should use as
+       header.frame_id; it, not hipnuc_imu_link, is what the sensor's
+       raw axes actually match. -->
+  <xacro:property name="hipnuc_imu_xyz" value="0 0 0.2195" />
+  <xacro:property name="hipnuc_imu_rpy" value="0 0 1.570796" />
+  <link name="$(arg prefix)hipnuc_imu_link">
+    <visual>
+      <geometry>
+        <!-- X=0.0585 (58.5mm, sensor's own Y/"nose-tail" length, aligned
+             to this frame's own X/forward per the mounting choice above),
+             Y=0.040 (40mm width), Z=0.020 (20mm height): the M12
+             variant's real datasheet envelope, not the case's true
+             external shape (M12 connector stub not separately modeled). -->
+        <box size="0.0585 0.040 0.020" />
+      </geometry>
+      <material name="hipnuc_imu_grey">
+        <color rgba="0.7 0.7 0.72 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.0585 0.040 0.020" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.075" />
+      <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00002" iyz="0" izz="0.00002" />
+    </inertial>
+  </link>
+  <joint name="$(arg prefix)hipnuc_imu_joint" type="fixed">
+    <parent link="$(arg prefix)extras_link" />
+    <child link="$(arg prefix)hipnuc_imu_link" />
+    <origin xyz="${hipnuc_imu_xyz}" rpy="${hipnuc_imu_rpy}" />
+  </joint>
+  <link name="$(arg prefix)hipnuc_imu_data_frame" />
+  <joint name="$(arg prefix)hipnuc_imu_data_joint" type="fixed">
+    <parent link="$(arg prefix)hipnuc_imu_link" />
+    <child link="$(arg prefix)hipnuc_imu_data_frame" />
+    <origin xyz="0 0 0" rpy="0 0 -1.570796" />
+  </joint>
+
   <!-- tool_head_link (the provisional STEP "Tool head" mesh, a
        placeholder identity-offset guess) has been removed: the real G2
        gripper now attaches at link_eef instead (via add_gripper/
@@ -1007,6 +1093,80 @@
           <frame>sensor</frame>
           <measure_direction>child_to_parent</measure_direction>
         </force_torque>
+      </sensor>
+    </gazebo>
+  </xacro:if>
+
+  <!-- HiPNUC HI14R3-232-000 IMU (gz-sim only): attached to
+       hipnuc_imu_data_frame, NOT hipnuc_imu_link, since that data frame is
+       the one whose axes actually match what the sensor reports (see that
+       frame's own comment, above, for the RFU-vs-FLU derivation). Real
+       hardware: the official HiPNUC ROS2 driver (hipnuc/products,
+       ros/ros2/hipnuc_imu) publishes the same message type
+       (sensor_msgs/Imu) on 'imu/data' directly from the physical device
+       over RS-232, not wired here yet; that needs vendoring the driver
+       repo first (a real git-submodule-sized decision, held pending
+       confirmation rather than done unprompted this same session).
+       Noise stddev values are the real R3-grade datasheet specs (Table 9
+       gyroscope / Table 11 accelerometer noise density for HI14R2/HI14R3,
+       identical for both), unit-converted for gz-sim's own SI expectations:
+       gyro 0.008 deg/s/sqrt(Hz) * (pi/180) = 0.0001396 rad/s/sqrt(Hz);
+       accel 0.09 mg/sqrt(Hz) * 9.80665e-3 = 0.0008826 m/s^2/sqrt(Hz).
+       update_rate 100Hz matches the datasheet's own "Nom" UART output
+       frame rate (Table 8; max is 1000Hz, configurable on the real
+       device). No Sensors-system plugin registration needed here: unlike
+       camera-type sensors (rendered, need gz::sim::systems::Sensors,
+       already registered once via the wrist camera above), an IMU sensor
+       is computed directly from the link's own physics state and doesn't
+       need a render-engine-backed system. -->
+  <xacro:if value="${_is_gz_sim}">
+    <gazebo reference="$(arg prefix)hipnuc_imu_data_frame">
+      <sensor name="$(arg prefix)hipnuc_imu_sensor" type="imu">
+        <always_on>1</always_on>
+        <update_rate>100</update_rate>
+        <topic>$(arg prefix)hipnuc_imu/data</topic>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.0001396</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.0001396</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.0001396</stddev>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.0008826</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.0008826</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.0008826</stddev>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
       </sensor>
     </gazebo>
   </xacro:if>
