@@ -97,6 +97,14 @@ def _prefix_controller_joints(yaml_path, prefix, robot_id, use_sim_time):
 # under '{topic}/camera_info' -- bridged here for completeness the same way
 # xarm_gazebo's own '_robot_beside_table_gazebo.launch.py' bridges it for
 # the (unrelated) wrist camera.
+# depth/image vs depth/depth_image: gz-sim's rgbd_camera sensor publishes
+# BOTH, and they are NOT the same data -- 'depth/image' is an rgb8 preview
+# render (from this sensor's <camera><image><format>L8</format> config,
+# same as any plain camera's "image" stream), NOT metric depth (confirmed
+# by echoing its header: encoding=rgb8). 'depth/depth_image' is the actual
+# gz.msgs.Image depth buffer the point cloud itself is generated from --
+# that's the one to view as a real 2D depth map (e.g. an RViz Image
+# display), not 'depth/image' despite the name suggesting otherwise.
 _FIXED_CAMERA_LEAVES = [
     ('color/image_raw', 'sensor_msgs/msg/Image', 'gz.msgs.Image'),
     ('color/camera_info', 'sensor_msgs/msg/CameraInfo', 'gz.msgs.CameraInfo'),
@@ -105,6 +113,7 @@ _FIXED_CAMERA_LEAVES = [
     ('infra2/image_raw', 'sensor_msgs/msg/Image', 'gz.msgs.Image'),
     ('infra2/camera_info', 'sensor_msgs/msg/CameraInfo', 'gz.msgs.CameraInfo'),
     ('depth/image', 'sensor_msgs/msg/Image', 'gz.msgs.Image'),
+    ('depth/depth_image', 'sensor_msgs/msg/Image', 'gz.msgs.Image'),
     ('depth/camera_info', 'sensor_msgs/msg/CameraInfo', 'gz.msgs.CameraInfo'),
     ('depth/points', 'sensor_msgs/msg/PointCloud2', 'gz.msgs.PointCloudPacked'),
 ]
