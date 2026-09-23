@@ -1205,55 +1205,6 @@
     <xacro:usb_camera_sensor_tags name="$(arg prefix)right_camera" />
   </xacro:if>
 
-  <!-- Sim-only depth-test target: a tall, slim, world-upright cylinder,
-       0.5m straight out from fixed_cam1's own lens, for visually/
-       numerically verifying that camera's point cloud alignment (an
-       asymmetric-enough, unambiguous target: unlike tested_world.world's
-       flat, left-right-symmetric wall, which can't reveal certain bugs,
-       e.g. a mirror flip, since it looks the same either way).
-       Parented directly to fixed_cam1_camera_link (NOT base_link) so "0.5m
-       in front of the camera" stays literally true regardless of where
-       fixed_cam1_xyz/rpy above end up being tuned to. xyz="0.5 0 0" is
-       exactly the "camera forward" axis in that link's own physical
-       (non-optical) convention: the same X-forward convention this
-       package's point-cloud optical_frame_id fix (fixed_cam_sensor_tags'
-       depth sensor, above) is keyed to, so a correctly-calibrated point
-       cloud should show this cylinder's surface at very close to x=0.5m in
-       the raw (sensor-local) depth data.
-       rpy="0 0 0" (no counter-rotation) relies on fixed_cam1_xyz/rpy only
-       ever applying pure YAW (0 or pi so far, see fixed_cam1_rpy/
-       fixed_cam2_rpy above): yaw alone keeps a cylinder's own Z axis
-       aligned with world Z (upright) regardless of heading, so this only
-       needs revisiting if a fixed camera ever gets pitch/roll added.
-       Visual only (no <collision>): a depth/rgbd camera sensor renders
-       from the visual mesh, not physics collision, so collision geometry
-       would add self-collision computation for zero benefit here. Debug
-       aid only: gated on _is_gz_sim so it never appears on the real
-       robot's model. -->
-  <xacro:if value="${_is_gz_sim}">
-    <xacro:property name="cam1_test_target_radius" value="0.025" />
-    <xacro:property name="cam1_test_target_height" value="1.0" />
-    <link name="$(arg prefix)fixed_cam1_test_target_link">
-      <visual>
-        <geometry>
-          <cylinder radius="${cam1_test_target_radius}" length="${cam1_test_target_height}" />
-        </geometry>
-        <material name="test_target_orange">
-          <color rgba="1.0 0.5 0.0 1" />
-        </material>
-      </visual>
-      <inertial>
-        <mass value="0.05" />
-        <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001" />
-      </inertial>
-    </link>
-    <joint name="$(arg prefix)fixed_cam1_test_target_joint" type="fixed">
-      <parent link="$(arg prefix)fixed_cam1_camera_link" />
-      <child link="$(arg prefix)fixed_cam1_test_target_link" />
-      <origin xyz="0.5 0 0" rpy="0 0 0" />
-    </joint>
-  </xacro:if>
-
   <!-- State-only ros2_control interface for the base's 4 steering + 4 wheel
        joints (see ranger_mini_v3.xacro's own header comment: they're left
        passive, no command interface / drive plugin; driving the base is
