@@ -526,31 +526,24 @@ def launch_setup(context, *args, **kwargs):
             startup_actions.append(wrist_camera_bridge)
 
         if enable_hipnuc_imu:
-            # gz-sim's IMU sensor has no optical_frame_id-style override (see
-            # fix_imu_frame_id.py's own docstring), so it always publishes
-            # with an auto-generated, unresolvable scoped entity path as
-            # header.frame_id. Bridge to a "_raw" topic first, then a small
-            # republisher node fixes up the frame_id to the real TF frame
-            # before anything (RViz's Imu display, etc.) consumes it.
+            # Straight bridge: the sensor tag's own <gz_frame_id> (see
+            # hipnuc_imu_sensor in ranger_xarm6.urdf.xacro) already makes
+            # gz-sim publish the correct, TF-resolvable header.frame_id --
+            # confirmed live, no republisher workaround needed (an IMU-
+            # specific <optical_frame_id>-less override was assumed at
+            # first, since that's camera-only; <gz_frame_id> turned out to
+            # be a generic gz-sensors8 Sensor-base-class override that
+            # works for every sensor type, IMU included).
             imu_gz_topic = f'{prefix}hipnuc_imu/data'
-            imu_raw_topic = f'/{robot_id}/hipnuc_imu/data_raw' if robot_id else f'/{imu_gz_topic}_raw'
             imu_ros_topic = f'/{robot_id}/hipnuc_imu/data' if robot_id else f'/{imu_gz_topic}'
-            imu_frame_id = f'{prefix}hipnuc_imu_data_frame'
             hipnuc_imu_bridge = Node(
                 package='ros_gz_bridge',
                 executable='parameter_bridge',
                 arguments=[f'/{imu_gz_topic}@sensor_msgs/msg/Imu[gz.msgs.IMU'],
-                remappings=[(f'/{imu_gz_topic}', imu_raw_topic)],
-                output='screen',
-            )
-            hipnuc_imu_frame_fixup = Node(
-                package='ranger_xarm6_description',
-                executable='fix_imu_frame_id.py',
-                arguments=[imu_raw_topic, imu_ros_topic, imu_frame_id],
+                remappings=[(f'/{imu_gz_topic}', imu_ros_topic)] if robot_id else [],
                 output='screen',
             )
             startup_actions.append(hipnuc_imu_bridge)
-            startup_actions.append(hipnuc_imu_frame_fixup)
 
         spawn_entity_node = Node(
             package='ros_gz_sim',

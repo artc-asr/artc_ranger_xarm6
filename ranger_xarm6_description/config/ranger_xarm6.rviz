@@ -268,9 +268,8 @@ Visualization Manager:
       Value: false
 
     # HiPNUC HI14R3-232-000 IMU (see hipnuc_imu_data_frame in
-    # ranger_xarm6.urdf.xacro). Topic already carries a corrected,
-    # TF-resolvable frame_id (scripts/fix_imu_frame_id.py republishes it --
-    # gz-sim's own imu sensor has no optical_frame_id-style override).
+    # ranger_xarm6.urdf.xacro). Topic already carries a correct,
+    # TF-resolvable frame_id (hipnuc_imu_sensor's own <gz_frame_id> tag).
     - Class: rviz_default_plugins/Imu
       Enabled: false
       Name: HiPNUC IMU

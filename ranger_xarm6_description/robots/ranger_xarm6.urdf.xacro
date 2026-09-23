@@ -1078,8 +1078,9 @@
            skipping." on every load: it scans every gz IMU sensor in the
            model and checks each one against a <ros2_control> hardware_info
            sensor list like this one (see gz_system.cpp's registerSensors),
-           independent of the ros_gz_bridge + fix_imu_frame_id.py topic
-           pipeline actually used for the published /hipnuc_imu/data data.
+           independent of the ros_gz_bridge topic pipeline actually used
+           for the published /hipnuc_imu/data data (its frame_id comes
+           from hipnuc_imu_sensor's own <gz_frame_id> tag, below).
            Nothing currently reads this ros2_control state interface (no
            IMUSensorBroadcaster in config/ros2_controllers.yaml); it's
            registered here only so the interface EXISTS, ready if a
@@ -1158,6 +1159,7 @@
         <always_on>1</always_on>
         <update_rate>100</update_rate>
         <topic>$(arg prefix)hipnuc_imu/data</topic>
+        <gz_frame_id>$(arg prefix)hipnuc_imu_data_frame</gz_frame_id>
         <imu>
           <angular_velocity>
             <x>

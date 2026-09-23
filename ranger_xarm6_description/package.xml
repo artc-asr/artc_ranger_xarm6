@@ -64,8 +64,6 @@
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>tf_transformations</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
-  <!-- scripts/fix_imu_frame_id.py -->
-  <exec_depend>sensor_msgs</exec_depend>
   <!-- gz-transport Python bindings, for teleporting the Gazebo entity
        directly (no 'gz service' CLI subprocess per control tick). -->
   <exec_depend>gz_transport_vendor</exec_depend>
