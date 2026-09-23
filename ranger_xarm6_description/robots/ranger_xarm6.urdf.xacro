@@ -364,22 +364,32 @@
   </joint>
 
   <!-- Livox Mid-360 3D LIDAR (360deg horizontal, non-repetitive scanning),
-       mounted on extras_link, "30mm above the joint position of the
-       IMU": same X/Y as hipnuc_imu_xyz, Z = hipnuc_imu_xyz's own
-       0.2205 + 0.030 = 0.2505.
+       mounted on extras_link. Nominal placement was "30mm above the
+       joint position of the IMU": same X/Y as hipnuc_imu_xyz, Z =
+       hipnuc_imu_xyz's own 0.2205 + 0.030 = 0.2505; livox_mid360_xyz's
+       actual value, "0 0.04 0.2805", is hand-tuned another 0.030 higher
+       than that nominal (same X/Y), a mounting-position choice, not
+       re-derived here (same treatment as hipnuc_imu_xyz's own hand-tuned
+       value above).
        Real mesh (not a placeholder box, unlike the IMU): copied from a
        sibling workspace's robotnik_sensors package (meshes/3d_lidar/
        livox_mid_360.stl), which Robotnik ships in production for the
        same Mid-360 unit on their own robots: own copy here since this
        repo can't depend on a package from an unrelated workspace.
        Two frames, same mount/native-origin split as the IMU above:
-       livox_mid360_link: MOUNT frame (hosts the mesh). Rotated +90deg
-       yaw relative to extras_link (cancels extras_rpy's own -90deg), so
-       it ends up identity-aligned with base_link, same choice as
-       hipnuc_imu_link and matching Weston Robot's own reference mount
-       (github.com/westonrobot/wr_devkit_mapping's robot.urdf.xacro:
-       livox_joint, zero rotation relative to base_link). Mesh visual/
-       collision origin rpy="1.57 0 0" and scale 0.001 are real,
+       livox_mid360_link: MOUNT frame (hosts the mesh). livox_mid360_rpy
+       is hand-tuned to "0 0 -1.570796" (same -90deg yaw as extras_rpy,
+       not cancelling it): combined with extras_link's own -90deg yaw,
+       livox_mid360_link ends up rotated 180deg in yaw relative to
+       base_link, NOT identity-aligned the way hipnuc_imu_link and Weston
+       Robot's own reference mount (github.com/westonrobot/
+       wr_devkit_mapping's robot.urdf.xacro: livox_joint, zero rotation
+       relative to base_link) are: a deliberate mounting-orientation
+       choice (e.g. connector/cable routing direction), not re-derived
+       here. Since the Mid-360 scans the full 360deg horizontally, this
+       yaw choice doesn't affect scan coverage, only which horizontal
+       angle in the raw scan corresponds to the robot's own front. Mesh
+       visual/collision origin rpy="1.57 0 0" and scale 0.001 are real,
        Robotnik-measured mesh-alignment facts (STL authored in mm, needs
        a 90deg roll to sit upright), not guessed.
        livox_frame: the SENSOR's own real point-cloud origin, child of
@@ -391,8 +401,8 @@
        LIO-SAM's default 'lidarFrame' config value, for drop-in
        compatibility with their mapping/nav stacks later if ever vendored
        here (wr_devkit_mapping, wr_devkit_navigation). -->
-  <xacro:property name="livox_mid360_xyz" value="0 0.04 0.2505" />
-  <xacro:property name="livox_mid360_rpy" value="0 0 1.570796" />
+  <xacro:property name="livox_mid360_xyz" value="0 0.04 0.2805" />
+  <xacro:property name="livox_mid360_rpy" value="0 0 -1.570796" />
   <link name="$(arg prefix)livox_mid360_link">
     <visual>
       <origin xyz="0 0 0" rpy="${pi/2} 0 0" />
