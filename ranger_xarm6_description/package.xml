@@ -40,6 +40,11 @@
        'sudo apt install ros-humble-v4l2-camera' separately before running
        sim:=false with enable_usb_cameras:=true. -->
   <exec_depend>v4l2_camera</exec_depend>
+  <!-- Real-hardware driver for the wrist-mounted Orbbec Gemini 2 (sim:=false
+       path); sim uses ros_gz_bridge instead. Mesh stays the D435i+stand
+       placeholder (xarm_description's own d435i_urdf, via
+       add_realsense_d435i): this is software-side wiring only. -->
+  <exec_depend>orbbec_camera</exec_depend>
   <exec_depend>xarm_controller</exec_depend>
   <exec_depend>xarm_api</exec_depend>
   <exec_depend>uf_ros_lib</exec_depend>

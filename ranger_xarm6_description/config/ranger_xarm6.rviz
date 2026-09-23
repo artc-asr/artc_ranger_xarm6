@@ -232,6 +232,40 @@ Visualization Manager:
         Reliability Policy: Reliable
       Value: true
 
+    # Wrist camera (Orbbec Gemini 2, software-side; mesh still the D435i+
+    # stand placeholder). Same depth-heatmap-on/color-image-off convention
+    # as the two fixed cameras above.
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: true
+      Name: Wrist Camera (depth heatmap)
+      Topic:
+        Value: wrist_camera/depth/points
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Style: Flat Squares
+      Size (Pixels): 3
+      Color Transformer: AxisColor
+      Axis: Z
+      Use Fixed Frame: false
+      Autocompute Value Bounds:
+        Value: true
+      Use rainbow: true
+      Invert Rainbow: false
+      Value: true
+
+    - Class: rviz_default_plugins/Image
+      Enabled: false
+      Name: Wrist Camera (color)
+      Topic:
+        Value: wrist_camera/color/image_raw
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Value: false
+
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

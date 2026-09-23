@@ -628,6 +628,170 @@
     <xacro:fixed_cam_sensor_tags prefix="$(arg prefix)fixed_cam2_" />
   </xacro:if>
 
+  <!-- Wrist camera (Orbbec Gemini 2, software-side only for now: mesh
+       stays the D435i+stand placeholder, see the header comment's own
+       "software-side only" note and this session's mesh-recommendation
+       discussion: no combined Gemini2+xArm-mount mesh exists, swapping it
+       would drop the mount geometry entirely). Same wiring treatment as
+       fixed_cam1/fixed_cam2 (correct optical_frame_id, own topics, bridged
+       + real driver), applied to the wrist's EXISTING D435i frame chain
+       (camera_link/camera_depth_frame/camera_color_frame/camera_left_ir_frame/
+       camera_right_ir_frame, from xarm_device's add_realsense_d435i="true"
+       above, itself unchanged): "lens distance similar, thickness differs"
+       per instruction, i.e. treat it as a D435i-shaped stand-in for now.
+
+       Deliberately NOT editing xarm_ros2/xarm_description/urdf/camera/
+       realsense.gazebo.xacro to add its own missing optical_frame_id (the
+       same bug fixed_cam_sensor_tags' own comment above documents) :
+       xarm_ros2 is a git submodule (this repo's own established practice
+       already avoids touching it, see xarm_device's add_gripper comment
+       above), and add_d435i_links (default true, unchanged) ties "create
+       these frames" and "register xarm's own broken sensor tags for them"
+       to the same flag with no way to get one without the other. Instead:
+       this macro adds a SEPARATE, correctly-configured sensor set on the
+       SAME existing frames, with distinct sensor names/topics (no
+       collision with xarm's own "${prefix}camera..." ones): xarm's own
+       copy keeps running unused/unbridged alongside (a real but accepted
+       small extra render cost, one wrist camera, in exchange for not
+       touching the submodule). No new Sensors-system plugin registration
+       needed: xarm's own realsense_gz call (still active, add_d435i_links
+       unchanged) already registered it once, same reason
+       fixed_cam_sensor_tags' own sensor tags don't re-register it either. -->
+  <xacro:macro name="wrist_camera_sensor_tags" params="prefix">
+    <gazebo reference="${prefix}camera_depth_frame">
+      <sensor name="${prefix}wristcameradepth" type="rgbd_camera">
+        <camera name="${prefix}wristcamera">
+          <!-- Physical, not optical, frame: same gz-sim rgbd_camera
+               point-cloud convention quirk as fixed_cam_sensor_tags' own
+               depth sensor above: see that comment for the full
+               empirical verification. Same gz-sensors version, same
+               sensor type, so the same fix applies here without needing
+               to re-derive it, though this specific sensor's point cloud
+               hasn't been separately re-verified against known world
+               geometry the way fixed_cam1's was. -->
+          <optical_frame_id>${prefix}camera_depth_frame</optical_frame_id>
+          <horizontal_fov>1.57</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>L8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <depth_camera>
+            <clip>
+              <near>0.1</near>
+              <far>10</far>
+            </clip>
+          </depth_camera>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.100</stddev>
+          </noise>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>0</visualize>
+        <topic>${prefix}wrist_camera/depth</topic>
+      </sensor>
+    </gazebo>
+    <gazebo reference="${prefix}camera_color_frame">
+      <sensor name="${prefix}wristcameracolor" type="camera">
+        <camera name="${prefix}wristcamera">
+          <optical_frame_id>${prefix}camera_color_optical_frame</optical_frame_id>
+          <horizontal_fov>1.57</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>RGB_INT8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+          <camera_info_topic>${prefix}wrist_camera/color/camera_info</camera_info_topic>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>1</visualize>
+        <topic>${prefix}wrist_camera/color/image_raw</topic>
+        <enable_metrics>true</enable_metrics>
+      </sensor>
+    </gazebo>
+    <!-- Reference links are camera_left_ir_frame/camera_right_ir_frame
+         (xarm_description's own d435i_urdf naming), but topics/optical
+         frames below still say "infra1"/"infra2": matching xarm's own
+         realsense_gz macro's identical left=infra1/right=infra2 convention
+         (and fixed_cam_sensor_tags'), so downstream consumers see the same
+         topic shape regardless of which camera it's from. -->
+    <gazebo reference="${prefix}camera_left_ir_frame">
+      <sensor name="${prefix}wristcameraired1" type="camera">
+        <camera name="${prefix}wristcamera">
+          <optical_frame_id>${prefix}camera_left_ir_optical_frame</optical_frame_id>
+          <horizontal_fov>1.57</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>L_INT8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.05</stddev>
+          </noise>
+          <camera_info_topic>${prefix}wrist_camera/infra1/camera_info</camera_info_topic>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>0</visualize>
+        <topic>${prefix}wrist_camera/infra1/image_raw</topic>
+      </sensor>
+    </gazebo>
+    <gazebo reference="${prefix}camera_right_ir_frame">
+      <sensor name="${prefix}wristcameraired2" type="camera">
+        <camera name="${prefix}wristcamera">
+          <optical_frame_id>${prefix}camera_right_ir_optical_frame</optical_frame_id>
+          <horizontal_fov>1.57</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>L_INT8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.05</stddev>
+          </noise>
+          <camera_info_topic>${prefix}wrist_camera/infra2/camera_info</camera_info_topic>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>0</visualize>
+        <topic>${prefix}wrist_camera/infra2/image_raw</topic>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:if value="${_is_gz_sim}">
+    <xacro:wrist_camera_sensor_tags prefix="$(arg prefix)" />
+  </xacro:if>
+
   <!-- Plain single-image gz sensor for one usb_camera_macro instance
        (left_camera/right_camera): same structure as fixed_cam_sensor_tags'
        own color block above, just parameterized by 'name' instead of

@@ -45,6 +45,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    GroupAction,
     IncludeLaunchDescription,
     OpaqueFunction,
     RegisterEventHandler,
@@ -52,7 +53,7 @@ from launch.actions import (
 from launch.event_handlers import OnProcessExit, OnProcessStart
 from launch.launch_description_sources import AnyLaunchDescriptionSource, PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import Node
+from launch_ros.actions import Node, PushRosNamespace
 from launch_ros.substitutions import FindPackageShare
 
 from uf_ros_lib.uf_robot_utils import get_xacro_content, generate_robot_api_params
@@ -228,6 +229,23 @@ def launch_setup(context, *args, **kwargs):
     # confirm against the real unit's actual device nodes (`v4l2-ctl
     # --list-devices`) before trusting them.
     enable_usb_cameras = LaunchConfiguration('enable_usb_cameras').perform(context).lower() in ('true', '1', 'yes')
+    # Wrist camera (Orbbec Gemini 2, see wrist_camera_sensor_tags in
+    # ranger_xarm6.urdf.xacro; mesh stays the existing D435i+stand
+    # placeholder, deliberately not swapped -- no combined Gemini2+xArm-
+    # mount mesh exists, see this session's own mesh-recommendation
+    # discussion). Sim: bridges its gz-sim sensor topics, same leaf set as
+    # the fixed cameras (reuses _fixed_camera_bridge_args with cam_id
+    # 'wrist', since wrist_camera_sensor_tags' topics were deliberately
+    # shaped to match: '{prefix}wrist_camera/...'). Real hardware: includes
+    # orbbec_camera's own gemini2.launch.py (ros-humble-orbbec-camera,
+    # already installed here, unlike v4l2-camera above). UNTESTED against
+    # physical hardware; gemini2.launch.py exposes 'cloud_frame_id' to
+    # override the point cloud's frame_id (set below to match this URDF's
+    # camera_depth_frame) but no equivalent override for color/infra1/
+    # infra2's own frame_ids was found in its argument list -- those may
+    # not line up with this URDF's frame names without further work once
+    # real hardware is available to check against.
+    enable_wrist_camera = LaunchConfiguration('enable_wrist_camera').perform(context).lower() in ('true', '1', 'yes')
     # Shared between sim and real hardware: RViz (RobotModel + TF + the two
     # fixed cameras' point clouds) is the "digital twin" viewer either way,
     # same URDF, same topics either way -- following the standard ROS/Nav2
@@ -487,6 +505,17 @@ def launch_setup(context, *args, **kwargs):
             )
             startup_actions.append(usb_camera_bridge)
 
+        if enable_wrist_camera:
+            wrist_args, wrist_remaps = _fixed_camera_bridge_args('wrist', prefix, robot_id)
+            wrist_camera_bridge = Node(
+                package='ros_gz_bridge',
+                executable='parameter_bridge',
+                arguments=wrist_args,
+                remappings=wrist_remaps,
+                output='screen',
+            )
+            startup_actions.append(wrist_camera_bridge)
+
         spawn_entity_node = Node(
             package='ros_gz_sim',
             executable='create',
@@ -635,12 +664,53 @@ def launch_setup(context, *args, **kwargs):
                 output='screen',
             ))
 
+    wrist_camera_launches = []
+    if enable_wrist_camera:
+        # Real hardware: the wrist-mounted Orbbec Gemini 2, via
+        # orbbec_camera's own gemini2.launch.py (ros-humble-orbbec-camera,
+        # already installed on this dev machine). That launch file uses its
+        # own 'camera_name' arg as BOTH a PushRosNamespace value AND a
+        # composable-node 'name=' field directly -- the latter can't
+        # contain '/', so camera_name is kept a simple 'wrist_camera' (no
+        # robot_id baked in) and the robot_id level is added by wrapping
+        # the include in our own outer PushRosNamespace instead. Combined:
+        # '/{robot_id}/wrist_camera/...', matching exactly what the sim-side
+        # wrist_camera_bridge remaps gz's topics onto above.
+        # publish_tf:false: same reasoning as the D435i's/'s above -- this
+        # URDF's existing wrist camera frame chain (camera_link/
+        # camera_depth_frame/etc, from xarm_device's add_realsense_d435i)
+        # already gets broadcast by robot_state_publisher.
+        # cloud_frame_id: pointed at camera_depth_frame (see
+        # wrist_camera_sensor_tags' own sim-side comment on why depth uses
+        # the physical, not optical, frame there) so the point cloud's
+        # frame_id matches what this URDF actually publishes TF for --
+        # this is the one frame override gemini2.launch.py exposes; see the
+        # enable_wrist_camera comment above for the color/infra1/infra2
+        # caveat this doesn't cover.
+        gemini2_launch_path = PathJoinSubstitution(
+            [FindPackageShare('orbbec_camera'), 'launch', 'gemini2.launch.py']
+        )
+        gemini2_include = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(gemini2_launch_path),
+            launch_arguments={
+                'camera_name': 'wrist_camera',
+                'serial_number': LaunchConfiguration('wrist_camera_serial'),
+                'enable_point_cloud': 'true',
+                'publish_tf': 'false',
+                'cloud_frame_id': f'{prefix}camera_depth_frame',
+            }.items(),
+        )
+        wrist_camera_launches.append(
+            GroupAction([PushRosNamespace(robot_id), gemini2_include]) if robot_id else gemini2_include
+        )
+
     return [
         robot_state_publisher_node,
         ros2_control_node,
         ranger_driver_launch,
         *fixed_camera_launches,
         *usb_camera_launches,
+        *wrist_camera_launches,
         *([rviz_node] if run_rviz else []),
         RegisterEventHandler(OnProcessStart(target_action=ros2_control_node, on_start=controller_spawners)),
     ]
@@ -666,5 +736,7 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_usb_cameras', default_value='true', description='Bridge (sim) / launch v4l2_camera_node (real, needs ros-humble-v4l2-camera installed separately) for the two SincereFirst USB modules (left_camera/right_camera).'),
         DeclareLaunchArgument('left_camera_video_device', default_value='/dev/video0', description="real hardware only: left_camera's V4L2 device node -- confirm with `v4l2-ctl --list-devices` on the real unit, this default is a placeholder"),
         DeclareLaunchArgument('right_camera_video_device', default_value='/dev/video2', description="real hardware only: right_camera's V4L2 device node -- confirm with `v4l2-ctl --list-devices` on the real unit, this default is a placeholder"),
+        DeclareLaunchArgument('enable_wrist_camera', default_value='true', description='Bridge (sim) / launch orbbec_camera (real, ros-humble-orbbec-camera) for the wrist-mounted Orbbec Gemini 2. Mesh stays the D435i+stand placeholder.'),
+        DeclareLaunchArgument('wrist_camera_serial', default_value='', description='real hardware only: wrist camera Gemini 2 serial number (only needed if multiple Orbbec devices are ever present at once)'),
         OpaqueFunction(function=launch_setup),
     ])
