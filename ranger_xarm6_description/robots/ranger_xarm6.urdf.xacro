@@ -1276,14 +1276,58 @@
   </xacro:if>
 
   <!-- F/T SENSOR (Gazebo simulation only): simulated physics force/torque
-       measurement at joint6. This is the sim-side sensor plugin, separate
-       from model1300="true" above (which swaps in the F/T-sensor-equipped
-       tool-flange MESH); the physical accessory's presence, previously
-       flagged here as unconfirmed, is now confirmed by
+       measurement at joint6 (the arm's last revolute joint, upstream of
+       link_eef/ft_sensor_link/camera_mount_link).
+       Tried moving this to ft_sensor_joint first, to report about the
+       F/T sensor cylinder's own centre (that joint's origin exactly
+       coincides with ft_sensor_link's own origin) instead: verified live
+       that gz-sim's force_torque sensor does NOT work on a fixed joint
+       (unlike a revolute one): the gz topic gets advertised but never
+       actually publishes a single message, with no error either (an
+       apparent DART/gz-physics limitation, not an SDF config mistake;
+       likely the same "fixed-joint reduction" gz-physics does elsewhere,
+       merging a chain of purely-fixed-jointed links, link_eef through
+       ft_sensor_link/camera_mount_link/camera_link, into link6's own
+       rigid body internally, leaving no separate physics constraint at
+       ft_sensor_joint to measure a reaction force across at all).
+       Reverted to joint6, the nearest ACTUAL (non-reduced) joint
+       boundary: because of that same reduction, joint6's own reaction
+       force already reflects the combined weight/load of everything
+       downstream (F/T sensor cylinder, camera, gripper, and any tool
+       contact force) as a single rigid assembly, so the FORCE component
+       reported here is physically equivalent to measuring right at the
+       cylinder's centre; only the TORQUE component differs (resolved
+       about joint6's own origin, not the cylinder's, per the SDF
+       force_torque spec's own note that torque is always expressed
+       about the joint's origin regardless of <frame> choice): correct
+       for real force-controlled tasks (net wrench felt at the wrist),
+       just not literally "the F/T sensor's own frame" for torque.
+       No <gz_frame_id> here, unlike every other sensor in this file
+       (IMU, lidar, cameras' own <optical_frame_id>): tried it, verified
+       live that it breaks this specific sensor type outright (adding a
+       <gz_frame_id> element makes it stop publishing entirely, silently,
+       no error): an apparent gz-sim bug specific to force_torque, not
+       an SDF config mistake (every other sensor type tolerates the same
+       element fine). Instead, ranger_xarm6.launch.py routes this
+       sensor's raw topic through fix_wrench_frame_id.py (new, same
+       shape as the old, now-removed fix_imu_frame_id.py from before
+       gz_frame_id was found to work for the IMU), which republishes with
+       header.frame_id corrected to link6, the sensor's own actual
+       physics body, so it resolves via TF like every other sensor here.
+       This is the sim-side sensor plugin, separate from model1300="true"
+       above (which swaps in the F/T-sensor-equipped tool-flange MESH);
+       the physical accessory's presence is confirmed by
        RM_Version_1.2_production.step's arm node itself being named
        "xArm6(XI1300)_02022023". On actual hardware this comes from that
        accessory via ranger_xarm6.launch.py's sim:=false path (remaps
-       'uf_ftsensor_ext_states'). Mirrors the same gz-sim force_torque
+       'uf_ftsensor_ext_states', xarm_api's own real F/T driver topic):
+       that topic's own header.frame_id is hardcoded to the literal
+       string "uf_ft_sensor_ext_data" in xarm_api/src/xarm_driver.cpp,
+       not a real TF frame in this or any URDF (xarm_ros2 is a git
+       submodule, not editable here): sim and real will disagree on
+       frame_id until that's fixed upstream, or worked around the same
+       way (a real-hardware republisher node of its own), untested
+       against physical hardware either way. Mirrors the same gz-sim force_torque
        sensor + flat 'force_torque' topic convention robotnik_description
        uses at UR5e's wrist_3 for Theron/Kairos (see rbtheron_plus.urdf.xacro),
        so wbc.py's force_torque_callback needs no changes either way. -->

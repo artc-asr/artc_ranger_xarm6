@@ -479,14 +479,32 @@ def launch_setup(context, *args, **kwargs):
         # for Theron/Kairos); remap it under this robot's namespace so
         # wbc.py's plain 'force_torque' subscription (relative to its own
         # namespace) picks it up.
+        # Routed through a "_raw" topic + fix_wrench_frame_id.py (new):
+        # gz-sim's force_torque sensor has no working <gz_frame_id> support
+        # (verified live: adding that SDF element to it silently stops it
+        # publishing entirely, unlike every other sensor type in this
+        # file), so it still reports the usual unresolvable auto-generated
+        # scoped path as header.frame_id; this republisher fixes it up to
+        # link6, the sensor's own actual physics body (see
+        # force_torque_sensor's own comment in ranger_xarm6.urdf.xacro).
+        ft_raw_topic = f'/{robot_id}/force_torque_raw' if robot_id else '/force_torque_raw'
+        ft_ros_topic = f'/{robot_id}/force_torque' if robot_id else '/force_torque'
+        ft_frame_id = f'{prefix}link6'
         ft_bridge = Node(
             package='ros_gz_bridge',
             executable='parameter_bridge',
             arguments=['/force_torque@geometry_msgs/msg/WrenchStamped[gz.msgs.Wrench'],
-            remappings=[('/force_torque', f'/{robot_id}/force_torque')] if robot_id else [],
+            remappings=[('/force_torque', ft_raw_topic)],
+            output='screen',
+        )
+        ft_frame_fixup = Node(
+            package='ranger_xarm6_description',
+            executable='fix_wrench_frame_id.py',
+            arguments=[ft_raw_topic, ft_ros_topic, ft_frame_id],
             output='screen',
         )
         startup_actions.append(ft_bridge)
+        startup_actions.append(ft_frame_fixup)
 
         if enable_fixed_cameras:
             camera_args = []
