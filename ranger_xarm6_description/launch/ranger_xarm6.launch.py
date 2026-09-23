@@ -23,9 +23,18 @@ sim:=true, gazebo:=false -> robot_state_publisher + joint_state_publisher + stat
               claims that interface). Only for when you don't want Gazebo running
               at all, not even headless.
 sim:=false -> real xArm6 over the network (uf_robot_hardware/UFRobotSystemHardware)
-              + real Ranger Mini 3 over CAN (westonrobot_ranger_ros2). UNTESTED
+              + real Ranger Mini 3 over CAN (westonrobot_ranger_ros2) + the real
+              realsense2_camera driver for the two fixed D435i cameras. UNTESTED
               against physical hardware -- see wbcc_mm README / handover notes
               before running this against a real robot.
+              No Gazebo here -- deliberately: the standard ROS/Nav2 pattern for
+              a "digital twin" of a real robot is robot_state_publisher + TF +
+              RViz (same URDF as sim, real /joint_states driving it), not a
+              second live Gazebo instance kept state-synced to the real one.
+              RViz (run_rviz, on by default) is that digital twin here, same
+              as sim: real xArm6/Ranger joint states -> TF -> RobotModel, real
+              realsense2_camera topics -> the same point-cloud/image displays
+              ranger_xarm6.rviz already uses in sim.
 """
 import os
 import tempfile
@@ -81,6 +90,47 @@ def _prefix_controller_joints(yaml_path, prefix, robot_id, use_sim_time):
         return f.name
 
 
+# Leaf topics gz-sim publishes for each fixed_cam{1,2} rgbd_camera/camera
+# sensor (see fixed_cam_sensor_tags in ranger_xarm6.urdf.xacro), as (leaf,
+# ROS type, gz type). depth/camera_info has no explicit <camera_info_topic>
+# in that macro, but gz-sim's rgbd_camera sensor still auto-publishes it
+# under '{topic}/camera_info' -- bridged here for completeness the same way
+# xarm_gazebo's own '_robot_beside_table_gazebo.launch.py' bridges it for
+# the (unrelated) wrist camera.
+_FIXED_CAMERA_LEAVES = [
+    ('color/image_raw', 'sensor_msgs/msg/Image', 'gz.msgs.Image'),
+    ('color/camera_info', 'sensor_msgs/msg/CameraInfo', 'gz.msgs.CameraInfo'),
+    ('infra1/image_raw', 'sensor_msgs/msg/Image', 'gz.msgs.Image'),
+    ('infra1/camera_info', 'sensor_msgs/msg/CameraInfo', 'gz.msgs.CameraInfo'),
+    ('infra2/image_raw', 'sensor_msgs/msg/Image', 'gz.msgs.Image'),
+    ('infra2/camera_info', 'sensor_msgs/msg/CameraInfo', 'gz.msgs.CameraInfo'),
+    ('depth/image', 'sensor_msgs/msg/Image', 'gz.msgs.Image'),
+    ('depth/camera_info', 'sensor_msgs/msg/CameraInfo', 'gz.msgs.CameraInfo'),
+    ('depth/points', 'sensor_msgs/msg/PointCloud2', 'gz.msgs.PointCloudPacked'),
+]
+
+
+def _fixed_camera_bridge_args(cam_id, prefix, robot_id):
+    """ros_gz_bridge args + remaps for one fixed_cam{1,2} camera (gz -> ROS only).
+
+    gz-sim publishes on '{prefix}{cam_id}_camera/...' -- 'prefix' here is the
+    same f'{robot_id}_'-or-'' string used for the URDF's 'prefix' xacro arg,
+    since fixed_cam_sensor_tags is called with prefix="$(arg prefix)fixed_cam{1,2}_".
+    Remapped onto a clean '/{robot_id}/{cam_id}_camera/...' ROS topic, same
+    pattern the force_torque bridge above uses; with no robot_id, the gz-side
+    topic is already that clean, so no remap is needed.
+    """
+    gz_base = f'{prefix}{cam_id}_camera'
+    ros_base = f'/{robot_id}/{cam_id}_camera' if robot_id else f'/{gz_base}'
+    args = []
+    remaps = []
+    for leaf, ros_type, gz_type in _FIXED_CAMERA_LEAVES:
+        args.append(f'/{gz_base}/{leaf}@{ros_type}[{gz_type}')
+        if robot_id:
+            remaps.append((f'/{gz_base}/{leaf}', f'{ros_base}/{leaf}'))
+    return args, remaps
+
+
 def launch_setup(context, *args, **kwargs):
     # gz-sim doesn't resolve 'package://' mesh URIs against AMENT_PREFIX_PATH
     # the way robot_state_publisher/RViz do -- it needs GZ_SIM_RESOURCE_PATH
@@ -123,6 +173,22 @@ def launch_setup(context, *args, **kwargs):
     # see contact forces / physics debug visuals Gazebo renders that RViz
     # doesn't).
     gz_gui = LaunchConfiguration('gz_gui').perform(context).lower() in ('true', '1', 'yes')
+    # Two frame-mounted D435i cameras (fixed_cam1/fixed_cam2). Sim: bridges
+    # their gz-sim sensor topics to ROS2. Real hardware: launches the actual
+    # realsense2_camera driver for each. Either way, ignores the wrist
+    # camera on purpose -- still the D435i mesh software-side for now, but
+    # slated to become an Orbbec Gemini 2, wired up separately once that
+    # camera's own ROS packages are in (see ranger_xarm6.urdf.xacro).
+    enable_fixed_cameras = LaunchConfiguration('enable_fixed_cameras').perform(context).lower() in ('true', '1', 'yes')
+    # Shared between sim and real hardware: RViz (RobotModel + TF + the two
+    # fixed cameras' point clouds) is the "digital twin" viewer either way,
+    # same URDF, same topics either way -- following the standard ROS/Nav2
+    # pattern (robot_state_publisher + TF + RViz IS the digital twin; no
+    # second Gazebo instance kept alive alongside real hardware, since
+    # there's no first-class way to state-sync a live physics sim to a real
+    # robot without building that bridge ourselves, and RViz+TF already
+    # gives the same visualization for free).
+    run_rviz = LaunchConfiguration('run_rviz').perform(context).lower() in ('true', '1', 'yes')
     robot_id = LaunchConfiguration('robot_id').perform(context)
     robot_ip = LaunchConfiguration('robot_ip').perform(context)
     can_device = LaunchConfiguration('can_device').perform(context)
@@ -175,6 +241,31 @@ def launch_setup(context, *args, **kwargs):
         parameters=[{'use_sim_time': sim and gazebo}, robot_description],
     )
 
+    # Shared digital-twin viewer (see the run_rviz comment above): namespaced
+    # like robot_state_publisher_node, so the config's relative topics
+    # (robot_description, fixed_cam{1,2}_camera/depth/points, ...) resolve
+    # under this robot's namespace without hardcoding robot_id into the
+    # .rviz file, whether that data came from Gazebo (sim) or the real
+    # realsense2_camera driver (real hardware, sim:=false) -- both publish
+    # under the same '/{robot_id}/fixed_cam{1,2}_camera/...' topic layout.
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        namespace=robot_id,
+        arguments=[
+            '-f', f'{prefix}odom',
+            '-d', PathJoinSubstitution(
+                [FindPackageShare('ranger_xarm6_description'), 'config', 'ranger_xarm6.rviz']
+            ),
+        ],
+        # Same use_sim_time as robot_state_publisher_node above: only true
+        # when a '/clock' publisher actually exists (Gazebo, sim:=true).
+        # Real hardware (sim:=false) has no '/clock', so this is False there
+        # -- same reasoning as robot_state_publisher_node's own comment.
+        parameters=[{'use_sim_time': sim and gazebo}],
+        output='screen',
+    )
+
     controller_spawners = [
         Node(
             package='controller_manager',
@@ -207,8 +298,6 @@ def launch_setup(context, *args, **kwargs):
     ]
 
     if sim:
-        run_rviz = LaunchConfiguration('run_rviz').perform(context).lower() in ('true', '1', 'yes')
-
         # The base has no ros2_control-driven wheels or real drive plugin
         # (wheels are passive -- see ranger_mini_v3_description), so
         # nothing else publishes '{ns}_odom' -> '{ns}_base_link' or moves
@@ -240,23 +329,6 @@ def launch_setup(context, *args, **kwargs):
                 'gz_entity_name': robot_id or 'ranger_xarm6',
                 'use_sim_time': gazebo,
             }],
-            output='screen',
-        )
-
-        rviz_node = Node(
-            package='rviz2',
-            executable='rviz2',
-            # Namespaced like robot_state_publisher_node, so the config's
-            # relative 'robot_description' topic resolves under this robot's
-            # namespace without hardcoding robot_id into the .rviz file.
-            namespace=robot_id,
-            arguments=[
-                '-f', f'{prefix}odom',
-                '-d', PathJoinSubstitution(
-                    [FindPackageShare('ranger_xarm6_description'), 'config', 'ranger_xarm6.rviz']
-                ),
-            ],
-            parameters=[{'use_sim_time': gazebo}],
             output='screen',
         )
 
@@ -335,6 +407,22 @@ def launch_setup(context, *args, **kwargs):
         )
         startup_actions.append(ft_bridge)
 
+        if enable_fixed_cameras:
+            camera_args = []
+            camera_remaps = []
+            for cam_id in ('fixed_cam1', 'fixed_cam2'):
+                cam_args, cam_remaps = _fixed_camera_bridge_args(cam_id, prefix, robot_id)
+                camera_args.extend(cam_args)
+                camera_remaps.extend(cam_remaps)
+            camera_bridge = Node(
+                package='ros_gz_bridge',
+                executable='parameter_bridge',
+                arguments=camera_args,
+                remappings=camera_remaps,
+                output='screen',
+            )
+            startup_actions.append(camera_bridge)
+
         spawn_entity_node = Node(
             package='ros_gz_sim',
             executable='create',
@@ -407,10 +495,57 @@ def launch_setup(context, *args, **kwargs):
         }.items(),
     )
 
+    fixed_camera_launches = []
+    if enable_fixed_cameras:
+        # Real hardware: the two frame-mounted D435i units, via the official
+        # realsense2_camera driver (ros-humble-realsense2-camera). camera_name
+        # matches the URDF's sensor_d435i 'name' param (${prefix}fixed_cam{1,2}_camera)
+        # so its frame ids line up with robot_state_publisher's -- which is
+        # exactly why publish_tf is turned off here: the URDF already
+        # broadcasts that whole static tree from the same baked-in
+        # extrinsics realsense2_description's sensor_d435i uses, so the
+        # driver's own (duplicate) static TF would just fight it.
+        # Distinguishing the two physical units needs each one's serial
+        # number -- fixed_cam1_serial/fixed_cam2_serial launch args, REQUIRED
+        # once both are plugged in simultaneously (unset, "first device
+        # found" is a race between them).
+        rs_launch_path = PathJoinSubstitution(
+            [FindPackageShare('realsense2_camera'), 'launch', 'rs_launch.py']
+        )
+        for cam_id, serial_arg in (('fixed_cam1', 'fixed_cam1_serial'), ('fixed_cam2', 'fixed_cam2_serial')):
+            fixed_camera_launches.append(IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(rs_launch_path),
+                launch_arguments={
+                    # camera_namespace is what actually prefixes this node's
+                    # (relative) topics -- camera_name does NOT additionally
+                    # nest them. Bug caught before hardware ever saw it: an
+                    # earlier version set camera_namespace to plain robot_id
+                    # for BOTH cameras, so fixed_cam1 and fixed_cam2 would
+                    # have collided on the same '/{robot_id}/color/image_raw'
+                    # etc topics. This lands them on
+                    # '/{robot_id}/{cam_id}_camera/...', matching exactly
+                    # what the sim-side camera_bridge remaps gz's topics onto
+                    # above, so RViz's config (relative topics, same either
+                    # way) and any other consumer see identical topic names
+                    # regardless of sim vs real.
+                    'camera_namespace': f'{robot_id}/{cam_id}_camera' if robot_id else f'{cam_id}_camera',
+                    'camera_name': f'{prefix}{cam_id}_camera',
+                    'serial_no': LaunchConfiguration(serial_arg),
+                    'enable_color': 'true',
+                    'enable_depth': 'true',
+                    'enable_infra1': 'true',
+                    'enable_infra2': 'true',
+                    'pointcloud.enable': 'true',
+                    'publish_tf': 'false',
+                }.items(),
+            ))
+
     return [
         robot_state_publisher_node,
         ros2_control_node,
         ranger_driver_launch,
+        *fixed_camera_launches,
+        *([rviz_node] if run_rviz else []),
         RegisterEventHandler(OnProcessStart(target_action=ros2_control_node, on_start=controller_spawners)),
     ]
 
@@ -428,6 +563,9 @@ def generate_launch_description():
         DeclareLaunchArgument('y', default_value='0', description='Spawn pose (sim only)'),
         DeclareLaunchArgument('z', default_value='0.15', description='Spawn pose (sim only)'),
         DeclareLaunchArgument('yaw', default_value='0', description='Spawn pose (sim only)'),
-        DeclareLaunchArgument('run_rviz', default_value='true', description='sim only: launch RViz (RobotModel + TF + wall marker)'),
+        DeclareLaunchArgument('run_rviz', default_value='true', description='sim and real hardware: launch RViz, the digital-twin viewer (RobotModel + TF + the two fixed cameras\' point clouds/images) either way'),
+        DeclareLaunchArgument('enable_fixed_cameras', default_value='true', description='Bridge (sim) / launch realsense2_camera drivers (real) for the two frame-mounted D435i cameras (fixed_cam1/fixed_cam2). Wrist camera (Gemini 2, eventually) not covered by this flag.'),
+        DeclareLaunchArgument('fixed_cam1_serial', default_value="''", description="real hardware only: fixed_cam1's D435i serial number (REQUIRED once both fixed cameras are plugged in together)"),
+        DeclareLaunchArgument('fixed_cam2_serial', default_value="''", description="real hardware only: fixed_cam2's D435i serial number (REQUIRED once both fixed cameras are plugged in together)"),
         OpaqueFunction(function=launch_setup),
     ])

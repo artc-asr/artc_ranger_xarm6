@@ -80,6 +80,86 @@ Visualization Manager:
         Reliability Policy: Reliable
       Value: true
 
+    # Relative topics -- resolve under this node's own namespace (rviz2 is
+    # launched with namespace=<robot_id>), same convention RobotModel above
+    # uses. Matches the ROS-side topics ranger_xarm6.launch.py's
+    # camera_bridge remaps the two fixed_cam{1,2} D435i cameras onto (sim)
+    # / the realsense2_camera driver namespace (real hardware). Wrist
+    # camera (Gemini 2, eventually) intentionally not shown here yet.
+    # Point cloud view on by default (per instruction); the plain color
+    # Image displays are still here, just off by default -- toggle on in
+    # the Displays panel if you want the flat image feed instead/as well.
+    # Color Transformer: AxisColor (not RGB8) -- unlike Mid-360 (see
+    # livox_ros_driver2/config/display_point_cloud_ROS2.rviz's own
+    # PointCloud2, Color Transformer: Intensity), these points carry no
+    # 'intensity' field (just x/y/z/rgb -- checked via `ros2 topic echo
+    # .../depth/points --field fields`), so there's no lidar-style
+    # reflectivity value to rainbow-color by. AxisColor/Z is the depth-camera
+    # equivalent: colors by each point's Z in its OWN (Use Fixed Frame:
+    # false) optical frame, i.e. straight-line distance from the camera --
+    # same rainbow "heatmap" look, keyed to range instead of reflectivity.
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: true
+      Name: Fixed Cam 1 (depth heatmap)
+      Topic:
+        Value: fixed_cam1_camera/depth/points
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Style: Flat Squares
+      Size (Pixels): 3
+      Color Transformer: AxisColor
+      Axis: Z
+      Use Fixed Frame: false
+      Autocompute Value Bounds:
+        Value: true
+      Use rainbow: true
+      Invert Rainbow: false
+      Value: true
+
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: true
+      Name: Fixed Cam 2 (depth heatmap)
+      Topic:
+        Value: fixed_cam2_camera/depth/points
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Style: Flat Squares
+      Size (Pixels): 3
+      Color Transformer: AxisColor
+      Axis: Z
+      Use Fixed Frame: false
+      Autocompute Value Bounds:
+        Value: true
+      Use rainbow: true
+      Invert Rainbow: false
+      Value: true
+
+    - Class: rviz_default_plugins/Image
+      Enabled: false
+      Name: Fixed Cam 1 (color)
+      Topic:
+        Value: fixed_cam1_camera/color/image_raw
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Value: false
+
+    - Class: rviz_default_plugins/Image
+      Enabled: false
+      Name: Fixed Cam 2 (color)
+      Topic:
+        Value: fixed_cam2_camera/color/image_raw
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Value: false
+
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

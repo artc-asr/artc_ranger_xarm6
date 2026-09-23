@@ -30,6 +30,10 @@
        bare mesh (no xarm-specific arm-mount stand baked in, unlike
        xarm_description's own d435i_urdf used for the wrist camera). -->
   <exec_depend>realsense2_description</exec_depend>
+  <!-- Real-hardware driver for the same two cameras (ranger_xarm6.launch.py,
+       sim:=false path); sim uses ros_gz_bridge instead (already depended on
+       below). -->
+  <exec_depend>realsense2_camera</exec_depend>
   <exec_depend>xarm_controller</exec_depend>
   <exec_depend>xarm_api</exec_depend>
   <exec_depend>uf_ros_lib</exec_depend>
