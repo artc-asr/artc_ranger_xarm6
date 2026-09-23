@@ -105,8 +105,11 @@ class BasePosePublisher(Node):
 
         self.broadcaster = TransformBroadcaster(self)
         self.gz_node = GzNode()
-        self._wait_for_entity()
-        self._gz_set_pose(self.x, self.y, self.z, self.yaw)
+        # TF publishes immediately, NOT gated on the Gazebo entity existing
+        # (see _gz_teleport_loop's own comment for why that wait can now
+        # take longer than the old fixed timeout did) -- wbc.py's
+        # update_robot_state() needs this edge every tick regardless of
+        # whether Gazebo has finished spawning yet.
         self._publish_tf()
 
         self.create_subscription(Pose2D, 'set_base_pose', self._set_base_pose_cb, 10)
@@ -209,8 +212,21 @@ class BasePosePublisher(Node):
 
     # Runs in its own thread since each gz-transport request blocks
     # (~7ms measured) -- calling it from the tf_rate timer would eat into
-    # that budget and risk falling behind on TF publishing.
+    # that budget and risk falling behind on TF publishing. Waits for the
+    # Gazebo entity to actually exist FIRST (see _wait_for_entity's own
+    # comment): that wait used to happen in __init__ with a fixed 15s
+    # timeout, blocking TF publishing behind it and, if a slow-starting
+    # Gazebo (more sensors now than when 15s was chosen -- see this
+    # package's other cameras) ever exceeded that timeout, falling through
+    # to teleport calls against a still-nonexistent entity: exactly the
+    # flood of gz-side "[Err] Unable to update the pose for entity id:[0]"
+    # console spam _wait_for_entity's own comment already describes as
+    # unsuppressible from this node. Moved here (its own thread, no fixed
+    # deadline, TF already publishing independently above) so however long
+    # Gazebo actually takes to spawn, this simply keeps waiting instead of
+    # giving up and hammering a nonexistent entity.
     def _gz_teleport_loop(self, period):
+        self._wait_for_entity()
         while rclpy.ok():
             with self.lock:
                 x, y, z, yaw = self.x, self.y, self.z, self.yaw
@@ -239,21 +255,29 @@ class BasePosePublisher(Node):
             self.get_logger().warn(f'gz set_pose failed: {e}', throttle_duration_sec=2.0)
             return False
 
-    # Blocks (bounded) until the Gazebo entity actually exists, so the
-    # startup teleport and the periodic teleport thread don't race the
-    # separate 'create' spawner node. Polls the world's scene/info service
-    # (Empty -> Scene, a read-only query) rather than retrying set_pose
-    # itself: set_pose against a not-yet-existing entity makes Gazebo's own
-    # C++ UserCommands plugin log '[Err] Unable to update the pose for
-    # entity id:[0]' to its console on *every* rejected attempt -- that's
-    # server-side logging this node can't suppress from the client side no
-    # matter what it does with the (previously entirely discarded)
-    # request() return value, so the fix is to not call set_pose at all
-    # until scene/info confirms the entity is actually there.
-    def _wait_for_entity(self, timeout_sec=15.0, poll_period=0.1):
+    # Blocks -- UNBOUNDED, no timeout to give up at -- until the Gazebo
+    # entity actually exists, so the periodic teleport loop calling this
+    # doesn't race the separate 'create' spawner node. Polls the world's
+    # scene/info service (Empty -> Scene, a read-only query) rather than
+    # retrying set_pose itself: set_pose against a not-yet-existing entity
+    # makes Gazebo's own C++ UserCommands plugin log '[Err] Unable to
+    # update the pose for entity id:[0]' to its console on *every* rejected
+    # attempt -- that's server-side logging this node can't suppress from
+    # the client side no matter what it does with the (previously entirely
+    # discarded) request() return value, so the fix is to not call
+    # set_pose at all until scene/info confirms the entity is actually
+    # there. Deliberately unbounded now (an earlier version gave up after a
+    # fixed 15s and fell through to calling set_pose anyway): TF publishing
+    # no longer waits on this (see _gz_teleport_loop's own comment), so
+    # there's no longer a reason to ever stop waiting and risk hammering a
+    # nonexistent entity instead -- however long Gazebo actually takes to
+    # spawn (more sensors now than when 15s was chosen), this just keeps
+    # polling quietly (a throttled warning every 10s so a truly stuck wait
+    # is still visible, not silent).
+    def _wait_for_entity(self, poll_period=0.1, warn_period_sec=10.0):
         req = empty_pb2.Empty()
-        deadline = time.monotonic() + timeout_sec
-        while time.monotonic() < deadline:
+        start = time.monotonic()
+        while rclpy.ok():
             try:
                 result, scene = self.gz_node.request(
                     f'/world/{self.gz_world}/scene/info', req,
@@ -262,10 +286,11 @@ class BasePosePublisher(Node):
                     return
             except Exception:
                 pass
+            self.get_logger().warn(
+                f'Still waiting for Gazebo entity "{self.gz_entity_name}" in '
+                f'world "{self.gz_world}" ({time.monotonic() - start:.0f}s so far)...',
+                throttle_duration_sec=warn_period_sec)
             time.sleep(poll_period)
-        self.get_logger().warn(
-            f'Gazebo entity "{self.gz_entity_name}" in world "{self.gz_world}" '
-            f'never became available after {timeout_sec}s; proceeding anyway.')
 
 
 def main(args=None):
