@@ -255,6 +255,12 @@ def launch_setup(context, *args, **kwargs):
     # just the ROS package folder), held pending confirmation rather than
     # added unprompted.
     enable_hipnuc_imu = LaunchConfiguration('enable_hipnuc_imu').perform(context).lower() in ('true', '1', 'yes')
+    # Livox Mid-360 (see livox_mid360_link/livox_frame in
+    # ranger_xarm6.urdf.xacro), on extras_link. Real hardware IS wired
+    # here (unlike the IMU above): livox_ros_driver2 is already vendored
+    # and built in this exact workspace, so it doesn't carry the same
+    # "new submodule" decision the HiPNUC driver does.
+    enable_livox_lidar = LaunchConfiguration('enable_livox_lidar').perform(context).lower() in ('true', '1', 'yes')
     # Shared between sim and real hardware: RViz (RobotModel + TF + the two
     # fixed cameras' point clouds) is the "digital twin" viewer either way,
     # same URDF, same topics either way -- following the standard ROS/Nav2
@@ -545,6 +551,35 @@ def launch_setup(context, *args, **kwargs):
             )
             startup_actions.append(hipnuc_imu_bridge)
 
+        if enable_livox_lidar:
+            # gz-sim's gpu_lidar sensor has no native point-cloud output,
+            # and ros_gz_bridge's own sensor_msgs/LaserScan converter
+            # turned out to silently truncate a multi-vertical-channel
+            # scan down to just its first (horizontal-only) row -- tried
+            # first, verified live: a 1200x32 sensor bridged to ROS came
+            # through with exactly 1200 ranges, not 38400. gz.msgs.
+            # LaserScan's own proto carries the full data (vertical_count,
+            # vertical_angle_min/max/step, a full count*vertical_count
+            # ranges array) that ROS's 2D-only LaserScan has no room for,
+            # so gz_lidar_to_pointcloud.py (new) subscribes to the raw gz
+            # topic directly via gz-transport (same gz.transport13/
+            # gz.msgs10 Python bindings base_pose_publisher.py already
+            # uses), bypassing ros_gz_bridge for this one sensor entirely,
+            # and republishes a real sensor_msgs/PointCloud2 -- matching
+            # livox_ros_driver2's own real 'livox/lidar' topic name (see
+            # enable_livox_lidar's own comment above) so sim/real need no
+            # downstream changes either way.
+            lidar_gz_topic = f'/{prefix}livox/lidar_raw'
+            lidar_ros_topic = f'/{robot_id}/livox/lidar' if robot_id else f'/{prefix}livox/lidar'
+            livox_lidar_converter = Node(
+                package='ranger_xarm6_description',
+                executable='gz_lidar_to_pointcloud.py',
+                arguments=[lidar_gz_topic, lidar_ros_topic],
+                parameters=[{'use_sim_time': True}],
+                output='screen',
+            )
+            startup_actions.append(livox_lidar_converter)
+
         spawn_entity_node = Node(
             package='ros_gz_sim',
             executable='create',
@@ -742,6 +777,50 @@ def launch_setup(context, *args, **kwargs):
             GroupAction([PushRosNamespace(robot_id), gemini2_include]) if robot_id else gemini2_include
         )
 
+    livox_lidar_launches = []
+    if enable_livox_lidar:
+        # Real hardware: the Livox Mid-360, via livox_ros_driver2's own
+        # node directly (not an IncludeLaunchDescription of one of its
+        # launch_ROS2/*.py files: those hardcode xfer_format=1, the
+        # Livox-proprietary CustomMsg format, at module-import time --
+        # not overridable via launch_arguments; instantiating the node
+        # here directly lets xfer_format be set to 0, plain
+        # sensor_msgs/PointCloud2, matching this repo's convention
+        # everywhere else and matching what sim publishes, so wbc.py/any
+        # downstream consumer needs no changes either way).
+        # frame_id: livox_frame, matching this URDF's own real-mesh-
+        # measured sensor origin (see livox_frame's own comment in
+        # ranger_xarm6.urdf.xacro) and Weston Robot's own reference
+        # default.
+        # user_config_path: the vendored MID360_config.json as-is (real
+        # lidar/host IP addresses, ports): network-dependent, can't be
+        # set correctly without the physical unit in hand, so this is
+        # software-side wiring only, same caveat as the wrist camera
+        # above -- revisit once real hardware is available.
+        livox_config_path = PathJoinSubstitution(
+            [FindPackageShare('livox_ros_driver2'), 'config', 'MID360_config.json']
+        )
+        livox_driver_node = Node(
+            package='livox_ros_driver2',
+            executable='livox_ros_driver2_node',
+            name='livox_lidar_publisher',
+            output='screen',
+            parameters=[{
+                'xfer_format': 0,
+                'multi_topic': 0,
+                'data_src': 0,
+                'publish_freq': 10.0,
+                'output_data_type': 0,
+                'frame_id': f'{prefix}livox_frame',
+                'lvx_file_path': '/home/livox/livox_test.lvx',
+                'user_config_path': livox_config_path,
+                'cmdline_input_bd_code': 'livox0000000001',
+            }],
+        )
+        livox_lidar_launches.append(
+            GroupAction([PushRosNamespace(robot_id), livox_driver_node]) if robot_id else livox_driver_node
+        )
+
     return [
         robot_state_publisher_node,
         ros2_control_node,
@@ -749,6 +828,7 @@ def launch_setup(context, *args, **kwargs):
         *fixed_camera_launches,
         *usb_camera_launches,
         *wrist_camera_launches,
+        *livox_lidar_launches,
         *([rviz_node] if run_rviz else []),
         RegisterEventHandler(OnProcessStart(target_action=ros2_control_node, on_start=controller_spawners)),
     ]
@@ -777,5 +857,6 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_wrist_camera', default_value='true', description='Bridge (sim) / launch orbbec_camera (real, ros-humble-orbbec-camera) for the wrist-mounted Orbbec Gemini 2. Mesh stays the D435i+stand placeholder.'),
         DeclareLaunchArgument('wrist_camera_serial', default_value='', description='real hardware only: wrist camera Gemini 2 serial number (only needed if multiple Orbbec devices are ever present at once)'),
         DeclareLaunchArgument('enable_hipnuc_imu', default_value='true', description='Bridge the gz-sim IMU sensor for the HiPNUC HI14R3-232-000 (mounted on extras_link). Sim only for now -- real hardware driver not wired yet.'),
+        DeclareLaunchArgument('enable_livox_lidar', default_value='true', description='Bridge the gz-sim gpu_lidar sensor (sim) or launch livox_ros_driver2 directly (sim:=false) for the Livox Mid-360 (mounted on extras_link).'),
         OpaqueFunction(function=launch_setup),
     ])

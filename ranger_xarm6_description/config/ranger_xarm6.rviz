@@ -281,6 +281,32 @@ Visualization Manager:
         Reliability Policy: Reliable
       Value: false
 
+    # Livox Mid-360 (see livox_frame in ranger_xarm6.urdf.xacro).
+    # Color Transformer: Intensity, not AxisColor (unlike the depth
+    # cameras' own PointCloud2 displays above) -- matches
+    # livox_ros_driver2/config/display_point_cloud_ROS2.rviz's own
+    # convention for this exact sensor: gz_lidar_to_pointcloud.py (sim)
+    # and livox_ros_driver2 (real) both carry a real 'intensity' field,
+    # unlike the depth cameras (no lidar-style reflectivity value there).
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: false
+      Name: Livox Mid-360
+      Topic:
+        Value: livox/lidar
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Style: Flat Squares
+      Size (Pixels): 3
+      Color Transformer: Intensity
+      Channel Name: intensity
+      Autocompute Intensity Bounds: true
+      Use Fixed Frame: false
+      Use rainbow: true
+      Invert Rainbow: false
+      Value: false
+
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

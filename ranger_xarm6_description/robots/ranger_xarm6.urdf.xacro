@@ -363,6 +363,70 @@
     <origin xyz="0 0 0" rpy="0 0 -1.570796" />
   </joint>
 
+  <!-- Livox Mid-360 3D LIDAR (360deg horizontal, non-repetitive scanning),
+       mounted on extras_link, "30mm above the joint position of the
+       IMU": same X/Y as hipnuc_imu_xyz, Z = hipnuc_imu_xyz's own
+       0.2205 + 0.030 = 0.2505.
+       Real mesh (not a placeholder box, unlike the IMU): copied from a
+       sibling workspace's robotnik_sensors package (meshes/3d_lidar/
+       livox_mid_360.stl), which Robotnik ships in production for the
+       same Mid-360 unit on their own robots: own copy here since this
+       repo can't depend on a package from an unrelated workspace.
+       Two frames, same mount/native-origin split as the IMU above:
+       livox_mid360_link: MOUNT frame (hosts the mesh). Rotated +90deg
+       yaw relative to extras_link (cancels extras_rpy's own -90deg), so
+       it ends up identity-aligned with base_link, same choice as
+       hipnuc_imu_link and matching Weston Robot's own reference mount
+       (github.com/westonrobot/wr_devkit_mapping's robot.urdf.xacro:
+       livox_joint, zero rotation relative to base_link). Mesh visual/
+       collision origin rpy="1.57 0 0" and scale 0.001 are real,
+       Robotnik-measured mesh-alignment facts (STL authored in mm, needs
+       a 90deg roll to sit upright), not guessed.
+       livox_frame: the SENSOR's own real point-cloud origin, child of
+       livox_mid360_link, offset +0.0365 in local Z: also a real
+       Robotnik-measured value (their own sensor_livox_mid_360 macro's
+       ${frame_prefix}joint). Named "livox_frame" (not "livox_mid360_
+       frame"), unprefixed-matching Weston Robot's own robot.urdf.xacro
+       AND livox_ros_driver2's own default 'frame_id' ROS param and
+       LIO-SAM's default 'lidarFrame' config value, for drop-in
+       compatibility with their mapping/nav stacks later if ever vendored
+       here (wr_devkit_mapping, wr_devkit_navigation). -->
+  <xacro:property name="livox_mid360_xyz" value="0 0.04 0.2505" />
+  <xacro:property name="livox_mid360_rpy" value="0 0 1.570796" />
+  <link name="$(arg prefix)livox_mid360_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0" />
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/livox_mid_360.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="livox_mid360_grey">
+        <color rgba="0.75 0.75 0.75 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0" />
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/livox_mid_360.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0.029" rpy="0 0 0" />
+      <mass value="0.265" />
+      <inertia ixx="0.00013" ixy="0" ixz="0" iyy="0.00013" iyz="0" izz="0.00016" />
+    </inertial>
+  </link>
+  <joint name="$(arg prefix)livox_mid360_joint" type="fixed">
+    <parent link="$(arg prefix)extras_link" />
+    <child link="$(arg prefix)livox_mid360_link" />
+    <origin xyz="${livox_mid360_xyz}" rpy="${livox_mid360_rpy}" />
+  </joint>
+  <link name="$(arg prefix)livox_frame" />
+  <joint name="$(arg prefix)livox_frame_joint" type="fixed">
+    <parent link="$(arg prefix)livox_mid360_link" />
+    <child link="$(arg prefix)livox_frame" />
+    <origin xyz="0 0 0.0365" rpy="0 0 0" />
+  </joint>
+
   <!-- tool_head_link (the provisional STEP "Tool head" mesh, a
        placeholder identity-offset guess) has been removed: the real G2
        gripper now attaches at link_eef instead (via add_gripper/
@@ -1202,6 +1266,90 @@
             </z>
           </linear_acceleration>
         </imu>
+      </sensor>
+    </gazebo>
+  </xacro:if>
+
+  <!-- Livox Mid-360 (gz-sim only): attached to livox_frame (the real
+       sensor-origin child frame, not the mount link: see that frame's
+       own comment above). gz-sim's gpu_lidar sensor type has no native
+       point-cloud output (checked: libgz-sensors8-gpu-lidar.so has zero
+       references to "points" anywhere, unlike libgz-sensors8-rgbd_camera
+       .so, which does: rgbd_camera is a special combined sensor class
+       purpose-built to also emit PointCloudPacked, gpu_lidar never was).
+       It only ever publishes a flat gz.msgs.LaserScan on <topic>.
+       ros_gz_bridge's own sensor_msgs/LaserScan converter was tried
+       first and turned out to silently truncate a multi-vertical-channel
+       scan down to just its first (horizontal-only) row: verified live,
+       a 1200x32 sensor bridged to ROS came through with exactly 1200
+       ranges, not 38400 (no "vertical" string anywhere in
+       libros_gz_bridge_lib.so hinted at this beforehand, but didn't
+       prove it either way). gz_lidar_to_pointcloud.py (new,
+       ranger_xarm6.launch.py) subscribes to the raw gz topic directly
+       via gz-transport instead (bypassing ros_gz_bridge for this one
+       sensor entirely), reading gz.msgs.LaserScan's own proto fields
+       (vertical_count, vertical_angle_min/max/step) straight from each
+       message rather than duplicating horizontal_samples/vertical_
+       samples/angle values as separate, easy-to-drift-out-of-sync
+       launch arguments.
+       <gz_frame_id> works the same way it does for hipnuc_imu_sensor
+       above (a generic gz-sensors8 Sensor-base-class override, not
+       lidar-specific): confirmed via the same static check (Lidar's own
+       compiled library calls Sensor::FrameId(), same as Imu's), verified
+       live once built.
+       No new Sensors-system <plugin> registration needed: gpu_lidar is a
+       rendering sensor (like the cameras), and gz::sim::systems::Sensors
+       is already registered once via the wrist camera above.
+       Range 0.2-40.0m and update_rate 10Hz are Weston Robot's own real
+       operational values for this exact sensor (github.com/westonrobot/
+       wr_devkit_mapping's params.yaml: "lidarMinRange: 0.2 ... 0.2 for
+       livox", "lidarMaxRange: 40.0 ... 40.0 for livox", livox_ros_
+       driver2's own launch file's publish_freq=10.0 default), not the
+       datasheet's own more optimistic max-range spec. Vertical FOV
+       (-7 to 52deg) is the real Mid-360 datasheet spec (Weston Robot's
+       own materials don't give an angular FOV number to prefer instead).
+       horizontal_samples/vertical_samples (1200/32) are Robotnik's own
+       proven gz-sim gpu_lidar grid-approximation resolution: gpu_lidar
+       fundamentally cannot reproduce Livox's real non-repetitive
+       scanning pattern (a uniform rectangular sample grid is the only
+       shape gpu_lidar can render), so there's no "real" number to derive
+       instead; reusing an already-tuned value beats guessing a new one.
+       Noise stddev 0.03 is likewise Robotnik's own tuned value, no
+       better real number available for this simulation approximation. -->
+  <xacro:if value="${_is_gz_sim}">
+    <gazebo reference="$(arg prefix)livox_frame">
+      <sensor name="$(arg prefix)livox_mid360_sensor" type="gpu_lidar">
+        <always_on>1</always_on>
+        <update_rate>10</update_rate>
+        <visualize>false</visualize>
+        <topic>$(arg prefix)livox/lidar_raw</topic>
+        <gz_frame_id>$(arg prefix)livox_frame</gz_frame_id>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>1200</samples>
+              <resolution>1</resolution>
+              <min_angle>${-pi}</min_angle>
+              <max_angle>${pi}</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>32</samples>
+              <resolution>1</resolution>
+              <min_angle>${radians(-7)}</min_angle>
+              <max_angle>${radians(52)}</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.2</min>
+            <max>40.0</max>
+            <resolution>1</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.03</stddev>
+          </noise>
+        </lidar>
       </sensor>
     </gazebo>
   </xacro:if>
