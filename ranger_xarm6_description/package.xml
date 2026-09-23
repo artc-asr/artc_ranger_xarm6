@@ -34,6 +34,12 @@
        sim:=false path); sim uses ros_gz_bridge instead (already depended on
        below). -->
   <exec_depend>realsense2_camera</exec_depend>
+  <!-- Real-hardware driver for the two SincereFirst USB camera modules
+       (left_camera/right_camera, ranger_xarm6.launch.py's sim:=false
+       path); sim uses ros_gz_bridge instead. Not installed by this repo:
+       'sudo apt install ros-humble-v4l2-camera' separately before running
+       sim:=false with enable_usb_cameras:=true. -->
+  <exec_depend>v4l2_camera</exec_depend>
   <exec_depend>xarm_controller</exec_depend>
   <exec_depend>xarm_api</exec_depend>
   <exec_depend>uf_ros_lib</exec_depend>

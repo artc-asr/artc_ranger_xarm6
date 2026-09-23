@@ -352,6 +352,82 @@
     <origin xyz="${fixed_cam2_xyz}" rpy="${fixed_cam2_rpy}" />
   </xacro:sensor_d435i>
 
+  <!-- Two SincereFirst USB camera modules, same "Camera_module_for_design"
+       STEP cluster as the two D435i's above (per the fixed_cam1_xyz/
+       fixed_cam2_xyz history: their ORIGINAL placeholder position, before
+       being moved for visual tuning in Gazebo, was
+       "0.142000 (+-0.034949) 0.388500": exactly this cluster's
+       bbox-center X/Z composed with the real measured USB-camera-pair Y
+       spacing pulled from that same STEP file. That measured spacing is
+       reused here verbatim for the actual USB cameras it always described;
+       Z is the CURRENT (post-tuning) 0.378500 the D435i's now use, not the
+       original 0.388500, per instruction.
+       left/right per REP103 (forward=X, left=+Y, up=Z), using fixed_cam1
+       (rpy=0, facing +X) as the "front" reference, not tied to
+       fixed_cam1/fixed_cam2's own Y-sign convention, which predates this
+       and was reassigned during their own tuning.
+       No SincereFirst mesh is available in this repo (meshes/ only has
+       extras_compressed.stl and xarm_mount_plate.stl): placeholder box
+       geometry via usb_camera_macro below, sized for a generic small UVC
+       board camera; swap in a real mesh/measured dimensions if/when
+       available, same caveat as every other STEP-placeholder geometry in
+       this file. rpy="0 0 0" on both: no orientation given, so facing
+       forward like fixed_cam1, matching this cluster's evident front-
+       mounted design intent. -->
+  <xacro:property name="left_camera_xyz" value="0.142000 0.034949 0.378500" />
+  <xacro:property name="right_camera_xyz" value="0.142000 -0.034949 0.378500" />
+  <xacro:property name="usb_camera_rpy" value="0 0 0" />
+
+  <!-- Generic UVC USB camera: link (placeholder box) + REP103 optical
+       frame child, mirroring the physical-frame/optical-frame split
+       realsense2_description's sensor_d435 macro uses above (see that
+       macro's own depth_joint/depth_optical_joint pair) so this camera's
+       image data lines up with the same convention downstream tooling
+       (RViz, image_pipeline, etc.) already expects from a ROS camera. -->
+  <xacro:macro name="usb_camera_macro" params="name parent *origin">
+    <joint name="${name}_joint" type="fixed">
+      <xacro:insert_block name="origin" />
+      <parent link="${parent}" />
+      <child link="${name}_link" />
+    </joint>
+    <link name="${name}_link">
+      <visual>
+        <geometry>
+          <!-- Placeholder dimensions (30x20x30mm): generic small UVC
+               board-camera size estimate, not a measured SincereFirst
+               spec. -->
+          <box size="0.030 0.020 0.030" />
+        </geometry>
+        <material name="usb_camera_black">
+          <color rgba="0.1 0.1 0.1 1" />
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="0.030 0.020 0.030" />
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="0.02" />
+        <inertia ixx="0.00001" ixy="0" ixz="0" iyy="0.00001" iyz="0" izz="0.00001" />
+      </inertial>
+    </link>
+    <joint name="${name}_optical_joint" type="fixed">
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
+      <parent link="${name}_link" />
+      <child link="${name}_optical_frame" />
+    </joint>
+    <link name="${name}_optical_frame" />
+  </xacro:macro>
+
+  <xacro:usb_camera_macro name="$(arg prefix)left_camera" parent="$(arg prefix)base_link">
+    <origin xyz="${left_camera_xyz}" rpy="${usb_camera_rpy}" />
+  </xacro:usb_camera_macro>
+
+  <xacro:usb_camera_macro name="$(arg prefix)right_camera" parent="$(arg prefix)base_link">
+    <origin xyz="${right_camera_xyz}" rpy="${usb_camera_rpy}" />
+  </xacro:usb_camera_macro>
+
   <!-- Sensor tags only (no Sensors-system <plugin> block): realsense_gz
        (realsense.gazebo.xacro) bundles BOTH the per-camera sensor
        declarations AND the world-wide gz::sim::systems::Sensors plugin
@@ -528,6 +604,49 @@
   <xacro:if value="${_is_gz_sim}">
     <xacro:fixed_cam_sensor_tags prefix="$(arg prefix)fixed_cam1_" />
     <xacro:fixed_cam_sensor_tags prefix="$(arg prefix)fixed_cam2_" />
+  </xacro:if>
+
+  <!-- Plain single-image gz sensor for one usb_camera_macro instance
+       (left_camera/right_camera): same structure as fixed_cam_sensor_tags'
+       own color block above, just parameterized by 'name' instead of
+       hardcoding "camera" (usb_camera_macro's links are named
+       "${name}_link"/"${name}_optical_frame" directly, not
+       "${prefix}camera_..." like sensor_d435i's convention). Placeholder
+       resolution/FOV (1280x720, 1.57rad) matching the D435i color stream
+       above pending real SincereFirst datasheet values. -->
+  <xacro:macro name="usb_camera_sensor_tags" params="name">
+    <gazebo reference="${name}_link">
+      <sensor name="${name}sensor" type="camera">
+        <camera name="${name}">
+          <optical_frame_id>${name}_optical_frame</optical_frame_id>
+          <horizontal_fov>1.57</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>RGB_INT8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+          <camera_info_topic>${name}/camera_info</camera_info_topic>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>1</visualize>
+        <topic>${name}/image_raw</topic>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:if value="${_is_gz_sim}">
+    <xacro:usb_camera_sensor_tags name="$(arg prefix)left_camera" />
+    <xacro:usb_camera_sensor_tags name="$(arg prefix)right_camera" />
   </xacro:if>
 
   <!-- Sim-only depth-test target: a tall, slim, world-upright cylinder,

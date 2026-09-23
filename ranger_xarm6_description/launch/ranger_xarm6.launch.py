@@ -140,6 +140,33 @@ def _fixed_camera_bridge_args(cam_id, prefix, robot_id):
     return args, remaps
 
 
+# Plain single-image cameras (left_camera/right_camera, see
+# usb_camera_sensor_tags in ranger_xarm6.urdf.xacro): just image_raw +
+# camera_info, unlike the D435i's multi-stream _FIXED_CAMERA_LEAVES. gz-side
+# topic base is '{prefix}{cam_name}' directly (usb_camera_macro's own links
+# are named "${name}_link"/"${name}_optical_frame", not
+# "${prefix}fixed_cam{1,2}_camera_..." like sensor_d435i's convention), so
+# no '_camera' suffix gets inserted the way _fixed_camera_bridge_args adds
+# one -- cam_name already IS 'left_camera'/'right_camera'.
+_USB_CAMERA_LEAVES = [
+    ('image_raw', 'sensor_msgs/msg/Image', 'gz.msgs.Image'),
+    ('camera_info', 'sensor_msgs/msg/CameraInfo', 'gz.msgs.CameraInfo'),
+]
+
+
+def _usb_camera_bridge_args(cam_name, prefix, robot_id):
+    """ros_gz_bridge args + remaps for one left_camera/right_camera (gz -> ROS only)."""
+    gz_base = f'{prefix}{cam_name}'
+    ros_base = f'/{robot_id}/{cam_name}' if robot_id else f'/{gz_base}'
+    args = []
+    remaps = []
+    for leaf, ros_type, gz_type in _USB_CAMERA_LEAVES:
+        args.append(f'/{gz_base}/{leaf}@{ros_type}[{gz_type}')
+        if robot_id:
+            remaps.append((f'/{gz_base}/{leaf}', f'{ros_base}/{leaf}'))
+    return args, remaps
+
+
 def launch_setup(context, *args, **kwargs):
     # gz-sim doesn't resolve 'package://' mesh URIs against AMENT_PREFIX_PATH
     # the way robot_state_publisher/RViz do -- it needs GZ_SIM_RESOURCE_PATH
@@ -189,6 +216,18 @@ def launch_setup(context, *args, **kwargs):
     # slated to become an Orbbec Gemini 2, wired up separately once that
     # camera's own ROS packages are in (see ranger_xarm6.urdf.xacro).
     enable_fixed_cameras = LaunchConfiguration('enable_fixed_cameras').perform(context).lower() in ('true', '1', 'yes')
+    # Two SincereFirst USB camera modules (left_camera/right_camera, see
+    # usb_camera_macro/usb_camera_sensor_tags in ranger_xarm6.urdf.xacro).
+    # Sim: bridges their gz-sim camera sensor topics. Real hardware: launches
+    # v4l2_camera_node per camera (ros-humble-v4l2-camera; NOT installed by
+    # this repo, install separately -- 'sudo apt install ros-humble-v4l2-
+    # camera' -- before running sim:=false with this on). UNTESTED against
+    # physical hardware, same status as ranger_bringup/xarm_api elsewhere in
+    # this launch file; left_camera_video_device/right_camera_video_device
+    # below default to /dev/video0 and /dev/video2 as placeholders only --
+    # confirm against the real unit's actual device nodes (`v4l2-ctl
+    # --list-devices`) before trusting them.
+    enable_usb_cameras = LaunchConfiguration('enable_usb_cameras').perform(context).lower() in ('true', '1', 'yes')
     # Shared between sim and real hardware: RViz (RobotModel + TF + the two
     # fixed cameras' point clouds) is the "digital twin" viewer either way,
     # same URDF, same topics either way -- following the standard ROS/Nav2
@@ -432,6 +471,22 @@ def launch_setup(context, *args, **kwargs):
             )
             startup_actions.append(camera_bridge)
 
+        if enable_usb_cameras:
+            usb_args = []
+            usb_remaps = []
+            for cam_name in ('left_camera', 'right_camera'):
+                cam_args, cam_remaps = _usb_camera_bridge_args(cam_name, prefix, robot_id)
+                usb_args.extend(cam_args)
+                usb_remaps.extend(cam_remaps)
+            usb_camera_bridge = Node(
+                package='ros_gz_bridge',
+                executable='parameter_bridge',
+                arguments=usb_args,
+                remappings=usb_remaps,
+                output='screen',
+            )
+            startup_actions.append(usb_camera_bridge)
+
         spawn_entity_node = Node(
             package='ros_gz_sim',
             executable='create',
@@ -549,11 +604,43 @@ def launch_setup(context, *args, **kwargs):
                 }.items(),
             ))
 
+    usb_camera_launches = []
+    if enable_usb_cameras:
+        # Real hardware: the two SincereFirst USB (UVC) modules, via
+        # v4l2_camera_node (ros-humble-v4l2-camera -- NOT installed by this
+        # repo, see enable_usb_cameras' own comment above). camera_frame_id
+        # matches usb_camera_macro's own "${name}_optical_frame" link name
+        # so the driver's published image/camera_info headers line up with
+        # robot_state_publisher's TF, same reasoning as publish_tf:false on
+        # the D435i's above -- except v4l2_camera_node never publishes TF of
+        # its own to begin with (no depth/extrinsics to derive one from),
+        # so there's no equivalent flag to turn off here.
+        # namespace is what actually prefixes this node's (relative)
+        # image_raw/camera_info topics, matching camera_namespace's role for
+        # the D435i's above -- lands these on '/{robot_id}/{cam_name}/...',
+        # exactly what the sim-side usb_camera_bridge remaps gz's topics
+        # onto, so RViz's config and any other consumer see identical topic
+        # names regardless of sim vs real.
+        for cam_name, device_arg in (('left_camera', 'left_camera_video_device'), ('right_camera', 'right_camera_video_device')):
+            usb_camera_launches.append(Node(
+                package='v4l2_camera',
+                executable='v4l2_camera_node',
+                name=f'{prefix}{cam_name}',
+                namespace=f'{robot_id}/{cam_name}' if robot_id else cam_name,
+                parameters=[{
+                    'video_device': LaunchConfiguration(device_arg),
+                    'camera_frame_id': f'{prefix}{cam_name}_optical_frame',
+                    'output_encoding': 'rgb8',
+                }],
+                output='screen',
+            ))
+
     return [
         robot_state_publisher_node,
         ros2_control_node,
         ranger_driver_launch,
         *fixed_camera_launches,
+        *usb_camera_launches,
         *([rviz_node] if run_rviz else []),
         RegisterEventHandler(OnProcessStart(target_action=ros2_control_node, on_start=controller_spawners)),
     ]
@@ -576,5 +663,8 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_fixed_cameras', default_value='true', description='Bridge (sim) / launch realsense2_camera drivers (real) for the two frame-mounted D435i cameras (fixed_cam1/fixed_cam2). Wrist camera (Gemini 2, eventually) not covered by this flag.'),
         DeclareLaunchArgument('fixed_cam1_serial', default_value="''", description="real hardware only: fixed_cam1's D435i serial number (REQUIRED once both fixed cameras are plugged in together)"),
         DeclareLaunchArgument('fixed_cam2_serial', default_value="''", description="real hardware only: fixed_cam2's D435i serial number (REQUIRED once both fixed cameras are plugged in together)"),
+        DeclareLaunchArgument('enable_usb_cameras', default_value='true', description='Bridge (sim) / launch v4l2_camera_node (real, needs ros-humble-v4l2-camera installed separately) for the two SincereFirst USB modules (left_camera/right_camera).'),
+        DeclareLaunchArgument('left_camera_video_device', default_value='/dev/video0', description="real hardware only: left_camera's V4L2 device node -- confirm with `v4l2-ctl --list-devices` on the real unit, this default is a placeholder"),
+        DeclareLaunchArgument('right_camera_video_device', default_value='/dev/video2', description="real hardware only: right_camera's V4L2 device node -- confirm with `v4l2-ctl --list-devices` on the real unit, this default is a placeholder"),
         OpaqueFunction(function=launch_setup),
     ])
