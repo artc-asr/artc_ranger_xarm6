@@ -291,11 +291,16 @@
        extras_xyz's own Z (0.2095), itself derived the same "STEP bbox-
        center" way per that property's own comment above. So the mesh's
        real top surface sits at 0.2095 (extras_xyz.z) + 0.2095 (mesh half-
-       height) = 0.4190 in base_link's frame; extras_rpy's own yaw doesn't
-       change this (a pure Z-axis rotation leaves Z spans alone), so this
-       holds regardless of any future retuning of extras_xyz/rpy's X/Y or
-       yaw specifically (only a change to extras_xyz's own Z, or a mesh
+       height) = 0.4190 in base_link's frame, nominally 0.2195 local Z
+       relative to extras_link (0.2095 mesh half-height + 0.010 half the
+       IMU's own 20mm height); extras_rpy's own yaw doesn't change this (a
+       pure Z-axis rotation leaves Z spans alone), so this holds
+       regardless of any future retuning of extras_xyz/rpy's X/Y or yaw
+       specifically (only a change to extras_xyz's own Z, or a mesh
        replacement, would need this height revisited).
+       hipnuc_imu_xyz's actual value, "0 0.04 0.2205", is hand-tuned off
+       that nominal "0 0 0.2195": a small manual Z clearance bump plus a
+       4cm Y offset, both mounting-position choices, not re-derived here.
 
        Two frames, same physical-mount/native-sensor-axes split used
        throughout this file for camera optical frames:
@@ -320,7 +325,7 @@
        (both sim and the real HiPNUC ROS driver) should use as
        header.frame_id; it, not hipnuc_imu_link, is what the sensor's
        raw axes actually match. -->
-  <xacro:property name="hipnuc_imu_xyz" value="0 0 0.2195" />
+  <xacro:property name="hipnuc_imu_xyz" value="0 0.04 0.2205" />
   <xacro:property name="hipnuc_imu_rpy" value="0 0 1.570796" />
   <link name="$(arg prefix)hipnuc_imu_link">
     <visual>
@@ -1067,6 +1072,34 @@
       <xacro:_passive_wheel_joint name="rl_wheel"/>
       <xacro:_passive_wheel_joint name="rr_steering_joint"/>
       <xacro:_passive_wheel_joint name="rr_wheel"/>
+      <!-- HiPNUC IMU state interface (see hipnuc_imu_sensor's <gazebo>
+           block, below): purely to stop gz_ros2_control's GazeboSimSystem
+           from logging "IMU sensor '...' not found in hardware_info,
+           skipping." on every load: it scans every gz IMU sensor in the
+           model and checks each one against a <ros2_control> hardware_info
+           sensor list like this one (see gz_system.cpp's registerSensors),
+           independent of the ros_gz_bridge + fix_imu_frame_id.py topic
+           pipeline actually used for the published /hipnuc_imu/data data.
+           Nothing currently reads this ros2_control state interface (no
+           IMUSensorBroadcaster in config/ros2_controllers.yaml); it's
+           registered here only so the interface EXISTS, ready if a
+           consumer needs it later. Sensor name must match the SDF
+           <sensor name="..."> exactly (gz_ros2_control matches by gz
+           entity name, not by frame/topic), and the state_interface names
+           must be exactly gz_system.cpp's own fixed 10-entry
+           interface_name_map. -->
+      <sensor name="$(arg prefix)hipnuc_imu_sensor">
+        <state_interface name="orientation.x"/>
+        <state_interface name="orientation.y"/>
+        <state_interface name="orientation.z"/>
+        <state_interface name="orientation.w"/>
+        <state_interface name="angular_velocity.x"/>
+        <state_interface name="angular_velocity.y"/>
+        <state_interface name="angular_velocity.z"/>
+        <state_interface name="linear_acceleration.x"/>
+        <state_interface name="linear_acceleration.y"/>
+        <state_interface name="linear_acceleration.z"/>
+      </sensor>
     </ros2_control>
   </xacro:if>
 
