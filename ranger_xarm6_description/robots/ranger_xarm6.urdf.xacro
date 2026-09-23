@@ -152,17 +152,26 @@
        to this scope, unlike properties declared scope="parent". -->
   <xacro:include filename="$(find xarm_description)/urdf/common/common.link.xacro" />
 
-  <!-- F/T sensor accessory cylinder: diameter=126mm/height=95mm per
-       instruction, height along the flange direction (local Z, matching
-       every other wrist-stack offset in this file: the gripper's own
-       "0 0 0.003" below, d435i_urdf's own camera_link_joint, etc.).
-       Placeholder mass/inertia (0.9kg, solid-cylinder formula): no real
-       F/T sensor datasheet mass available, same treatment as the HiPNUC
-       IMU's own placeholder inertial above. -->
+  <!-- F/T sensor accessory cylinder: radius=36.5mm/length=55mm
+       (hand-tuned from the original diameter=126mm/height=95mm
+       placeholder; the new radius, 36.5mm, exactly matches
+       end_tool_1300.stl's own measured flange-face radius: parsed
+       directly from its binary STL vertices, front face at local Z=0,
+       every edge vertex sits at exactly r=36.500mm: so the cylinder
+       now sits flush with the real flange's own outer edge instead of
+       overhanging it). Height still along the flange direction (local
+       Z, matching every other wrist-stack offset in this file: the
+       gripper's own "0 0 0.003" below, d435i_urdf's own
+       camera_link_joint, etc.).
+       Placeholder mass/inertia (solid-cylinder formula), scaled down
+       from the original 0.9kg by volume ratio (new/old = ~0.194) to
+       keep the same implied density, since no real F/T sensor datasheet
+       mass is available either way (same treatment as the HiPNUC IMU's
+       own placeholder inertial above). -->
   <link name="$(arg prefix)ft_sensor_link">
     <visual>
       <geometry>
-        <cylinder radius="0.063" length="0.095" />
+        <cylinder radius="0.0365" length="0.055" />
       </geometry>
       <material name="ft_sensor_grey">
         <color rgba="0.55 0.55 0.55 1" />
@@ -170,18 +179,18 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.063" length="0.095" />
+        <cylinder radius="0.0365" length="0.055" />
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.9" />
-      <inertia ixx="0.00157" ixy="0" ixz="0" iyy="0.00157" iyz="0" izz="0.00179" />
+      <mass value="0.175" />
+      <inertia ixx="0.0001024" ixy="0" ixz="0" iyy="0.0001024" iyz="0" izz="0.0001166" />
     </inertial>
   </link>
   <joint name="$(arg prefix)ft_sensor_joint" type="fixed">
     <parent link="$(arg prefix)link_eef" />
     <child link="$(arg prefix)ft_sensor_link" />
-    <origin xyz="0 0 0.0475" rpy="0 0 0" />
+    <origin xyz="0 0 0.0275" rpy="0 0 0" />
   </joint>
 
   <!-- Camera mount: exactly d435i_urdf's own link_eef body (same mesh,
@@ -205,7 +214,7 @@
   <joint name="$(arg prefix)camera_mount_joint" type="fixed">
     <parent link="$(arg prefix)ft_sensor_link" />
     <child link="$(arg prefix)camera_mount_link" />
-    <origin xyz="0 0 0.0475" rpy="0 0 0" />
+    <origin xyz="0 0 0.0275" rpy="0 0 0" />
   </joint>
 
   <!-- Exact same frames d435i_urdf's own macro (xarm_description/urdf/
