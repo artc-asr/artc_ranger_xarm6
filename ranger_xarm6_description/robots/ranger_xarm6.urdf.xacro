@@ -43,23 +43,6 @@
        See ranger_xarm6.launch.py, sim:=false path. -->
   <xacro:arg name="ros2_control_plugin" default="gz_ros2_control/GazeboSimSystem" />
   <xacro:arg name="robot_ip" default="" />
-  <!-- Diagnostic toggle for fixed_cam1/fixed_cam2 (the two frame-mounted
-       D435i's), default false per instruction: swaps sensor_d435i's own
-       'use_mesh' param, so 'false' drops the DAE visual/collision mesh
-       (camera/realsense/visual+collision d435.dae, via
-       realsense2_description) down to its own small box fallback (see
-       that macro's own use_mesh:=false branch: a
-       d435_cam_depth x d435_cam_width x d435_cam_height box, ~0.025x0.09x0.025m,
-       roughly the actual camera body's footprint): lets you compare the
-       point cloud with the full mesh vs. the plain box to check whether
-       the mesh itself (not just the camera's mount/orientation, already
-       checked separately this session) is what's obstructing/producing
-       wrong-looking points. Does NOT affect fixed_cam1/fixed_cam2's
-       frames, TF, or sensor topics at all: purely the visual/collision
-       geometry sensor_d435i itself renders. Flip back to true once done:
-       `ros2 launch ranger_xarm6_description ranger_xarm6.launch.py
-       fixed_cam_use_mesh:=true`. -->
-  <xacro:arg name="fixed_cam_use_mesh" default="false" />
 
   <!-- ====================================================================
        FT: base -> arm mount transform, corrected from Gazebo visual
@@ -360,12 +343,12 @@
   <xacro:property name="fixed_cam2_rpy" value="0 0 3.14159" />
 
   <xacro:sensor_d435i parent="$(arg prefix)base_link" name="$(arg prefix)fixed_cam1_camera"
-    use_nominal_extrinsics="true" use_mesh="$(arg fixed_cam_use_mesh)">
+    use_nominal_extrinsics="true" use_mesh="true">
     <origin xyz="${fixed_cam1_xyz}" rpy="${fixed_cam1_rpy}" />
   </xacro:sensor_d435i>
 
   <xacro:sensor_d435i parent="$(arg prefix)base_link" name="$(arg prefix)fixed_cam2_camera"
-    use_nominal_extrinsics="true" use_mesh="$(arg fixed_cam_use_mesh)">
+    use_nominal_extrinsics="true" use_mesh="true">
     <origin xyz="${fixed_cam2_xyz}" rpy="${fixed_cam2_rpy}" />
   </xacro:sensor_d435i>
 
