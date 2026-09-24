@@ -12,6 +12,7 @@
     <disable_collisions link1="${prefix}base_link" link2="${prefix}hipnuc_imu_link" reason="Rigid" />
     <disable_collisions link1="${prefix}base_link" link2="${prefix}left_camera_link" reason="Adjacent" />
     <disable_collisions link1="${prefix}base_link" link2="${prefix}link_base" reason="Adjacent" />
+    <disable_collisions link1="${prefix}base_link" link2="${prefix}livox_imu_mount_link" reason="Rigid" />
     <disable_collisions link1="${prefix}base_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}base_link" link2="${prefix}mount_plate_link" reason="Adjacent" />
     <disable_collisions link1="${prefix}base_link" link2="${prefix}right_camera_link" reason="Adjacent" />
@@ -28,10 +29,11 @@
     <disable_collisions link1="${prefix}extras_link" link2="${prefix}fl_wheel_link" reason="Rigid" />
     <disable_collisions link1="${prefix}extras_link" link2="${prefix}fr_steering_wheel_link" reason="Rigid" />
     <disable_collisions link1="${prefix}extras_link" link2="${prefix}fr_wheel_link" reason="Rigid" />
-    <disable_collisions link1="${prefix}extras_link" link2="${prefix}hipnuc_imu_link" reason="Adjacent" />
+    <disable_collisions link1="${prefix}extras_link" link2="${prefix}hipnuc_imu_link" reason="Rigid" />
     <disable_collisions link1="${prefix}extras_link" link2="${prefix}left_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}extras_link" link2="${prefix}link_base" reason="Rigid" />
-    <disable_collisions link1="${prefix}extras_link" link2="${prefix}livox_mid360_link" reason="Adjacent" />
+    <disable_collisions link1="${prefix}extras_link" link2="${prefix}livox_imu_mount_link" reason="Adjacent" />
+    <disable_collisions link1="${prefix}extras_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}extras_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}extras_link" link2="${prefix}right_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}extras_link" link2="${prefix}rl_steering_wheel_link" reason="Rigid" />
@@ -46,6 +48,7 @@
     <disable_collisions link1="${prefix}fixed_cam1_camera_link" link2="${prefix}hipnuc_imu_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam1_camera_link" link2="${prefix}left_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam1_camera_link" link2="${prefix}link_base" reason="Rigid" />
+    <disable_collisions link1="${prefix}fixed_cam1_camera_link" link2="${prefix}livox_imu_mount_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam1_camera_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam1_camera_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam1_camera_link" link2="${prefix}right_camera_link" reason="Rigid" />
@@ -60,6 +63,7 @@
     <disable_collisions link1="${prefix}fixed_cam2_camera_link" link2="${prefix}hipnuc_imu_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam2_camera_link" link2="${prefix}left_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam2_camera_link" link2="${prefix}link_base" reason="Rigid" />
+    <disable_collisions link1="${prefix}fixed_cam2_camera_link" link2="${prefix}livox_imu_mount_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam2_camera_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam2_camera_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fixed_cam2_camera_link" link2="${prefix}right_camera_link" reason="Rigid" />
@@ -73,6 +77,7 @@
     <disable_collisions link1="${prefix}fl_steering_wheel_link" link2="${prefix}hipnuc_imu_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_steering_wheel_link" link2="${prefix}left_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_steering_wheel_link" link2="${prefix}link_base" reason="Rigid" />
+    <disable_collisions link1="${prefix}fl_steering_wheel_link" link2="${prefix}livox_imu_mount_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_steering_wheel_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_steering_wheel_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_steering_wheel_link" link2="${prefix}right_camera_link" reason="Rigid" />
@@ -85,6 +90,7 @@
     <disable_collisions link1="${prefix}fl_wheel_link" link2="${prefix}hipnuc_imu_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_wheel_link" link2="${prefix}left_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_wheel_link" link2="${prefix}link_base" reason="Rigid" />
+    <disable_collisions link1="${prefix}fl_wheel_link" link2="${prefix}livox_imu_mount_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_wheel_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_wheel_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fl_wheel_link" link2="${prefix}right_camera_link" reason="Rigid" />
@@ -96,6 +102,7 @@
     <disable_collisions link1="${prefix}fr_steering_wheel_link" link2="${prefix}hipnuc_imu_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_steering_wheel_link" link2="${prefix}left_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_steering_wheel_link" link2="${prefix}link_base" reason="Rigid" />
+    <disable_collisions link1="${prefix}fr_steering_wheel_link" link2="${prefix}livox_imu_mount_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_steering_wheel_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_steering_wheel_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_steering_wheel_link" link2="${prefix}right_camera_link" reason="Rigid" />
@@ -106,6 +113,7 @@
     <disable_collisions link1="${prefix}fr_wheel_link" link2="${prefix}hipnuc_imu_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_wheel_link" link2="${prefix}left_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_wheel_link" link2="${prefix}link_base" reason="Rigid" />
+    <disable_collisions link1="${prefix}fr_wheel_link" link2="${prefix}livox_imu_mount_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_wheel_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_wheel_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}fr_wheel_link" link2="${prefix}right_camera_link" reason="Rigid" />
@@ -117,6 +125,7 @@
     <disable_collisions link1="${prefix}ft_sensor_link" link2="${prefix}xarm_gripper_base_link" reason="Rigid" />
     <disable_collisions link1="${prefix}hipnuc_imu_link" link2="${prefix}left_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}hipnuc_imu_link" link2="${prefix}link_base" reason="Rigid" />
+    <disable_collisions link1="${prefix}hipnuc_imu_link" link2="${prefix}livox_imu_mount_link" reason="Adjacent" />
     <disable_collisions link1="${prefix}hipnuc_imu_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}hipnuc_imu_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}hipnuc_imu_link" link2="${prefix}right_camera_link" reason="Rigid" />
@@ -125,6 +134,7 @@
     <disable_collisions link1="${prefix}hipnuc_imu_link" link2="${prefix}rr_steering_wheel_link" reason="Rigid" />
     <disable_collisions link1="${prefix}hipnuc_imu_link" link2="${prefix}rr_wheel_link" reason="Rigid" />
     <disable_collisions link1="${prefix}left_camera_link" link2="${prefix}link_base" reason="Rigid" />
+    <disable_collisions link1="${prefix}left_camera_link" link2="${prefix}livox_imu_mount_link" reason="Rigid" />
     <disable_collisions link1="${prefix}left_camera_link" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}left_camera_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}left_camera_link" link2="${prefix}right_camera_link" reason="Rigid" />
@@ -143,6 +153,7 @@
     <disable_collisions link1="${prefix}link4" link2="${prefix}link5" reason="Adjacent" />
     <disable_collisions link1="${prefix}link5" link2="${prefix}link6" reason="Adjacent" />
     <disable_collisions link1="${prefix}link6" link2="${prefix}xarm_gripper_base_link" reason="Rigid" />
+    <disable_collisions link1="${prefix}link_base" link2="${prefix}livox_imu_mount_link" reason="Rigid" />
     <disable_collisions link1="${prefix}link_base" link2="${prefix}livox_mid360_link" reason="Rigid" />
     <disable_collisions link1="${prefix}link_base" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}link_base" link2="${prefix}right_camera_link" reason="Rigid" />
@@ -150,6 +161,13 @@
     <disable_collisions link1="${prefix}link_base" link2="${prefix}rl_wheel_link" reason="Rigid" />
     <disable_collisions link1="${prefix}link_base" link2="${prefix}rr_steering_wheel_link" reason="Rigid" />
     <disable_collisions link1="${prefix}link_base" link2="${prefix}rr_wheel_link" reason="Rigid" />
+    <disable_collisions link1="${prefix}livox_imu_mount_link" link2="${prefix}livox_mid360_link" reason="Adjacent" />
+    <disable_collisions link1="${prefix}livox_imu_mount_link" link2="${prefix}mount_plate_link" reason="Rigid" />
+    <disable_collisions link1="${prefix}livox_imu_mount_link" link2="${prefix}right_camera_link" reason="Rigid" />
+    <disable_collisions link1="${prefix}livox_imu_mount_link" link2="${prefix}rl_steering_wheel_link" reason="Rigid" />
+    <disable_collisions link1="${prefix}livox_imu_mount_link" link2="${prefix}rl_wheel_link" reason="Rigid" />
+    <disable_collisions link1="${prefix}livox_imu_mount_link" link2="${prefix}rr_steering_wheel_link" reason="Rigid" />
+    <disable_collisions link1="${prefix}livox_imu_mount_link" link2="${prefix}rr_wheel_link" reason="Rigid" />
     <disable_collisions link1="${prefix}livox_mid360_link" link2="${prefix}mount_plate_link" reason="Rigid" />
     <disable_collisions link1="${prefix}livox_mid360_link" link2="${prefix}right_camera_link" reason="Rigid" />
     <disable_collisions link1="${prefix}livox_mid360_link" link2="${prefix}rl_steering_wheel_link" reason="Rigid" />

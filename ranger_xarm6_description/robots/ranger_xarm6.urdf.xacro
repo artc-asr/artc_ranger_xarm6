@@ -434,78 +434,111 @@
     <origin xyz="${extras_xyz}" rpy="${extras_rpy}" />
   </joint>
 
+  <!-- Livox/IMU mount bracket (livox_imu_mount.stl), sitting on top of
+       extras_link and carrying both the HiPNUC IMU (underneath its top
+       deck) and the Livox Mid-360 (on its top deck).
+
+       livox_imu_mount.stl and hipnuc_imu.stl were exported in mm from the
+       same CAD assembly frame (Z-up, both sitting ~303-344mm above that
+       frame's origin), so their relative placement is taken straight
+       from the CAD rather than hand-tuned. Measured from the binary STLs'
+       own vertices:
+         mount base plate underside:  Z = 302.90mm
+         mount top deck surface:      Z = 343.90mm (41.0mm tall bracket)
+         top deck 4-hole pattern ctr: X = -0.45, Y = 35.74mm
+         IMU housing (M12 stub and cable excluded): X -20.45..19.55,
+           Y 11.96..59.52, Z 310.40..330.20mm, so its center
+           (-0.45, 35.74, 320.30) sits directly under the deck's hole
+           pattern: IMU and lidar share one vertical axis.
+       livox_imu_mount_link's origin is on that shared axis, on the base
+       plate's underside (CAD point A0 = (-0.45, 35.74, 302.90)mm), so
+       every mesh offset below is just "minus A0" (plus the IMU's own
+       rotation, see hipnuc_imu_link).
+
+       Mounting on extras_link: underside flush with extras_link's top
+       surface (local Z 0.2095: extras_compressed.stl is centered on its
+       own origin, and its vertices span Z +/-0.2095), at the same
+       X/Y (0, 0.04) the IMU/Livox used before, so the lidar stays where
+       it was horizontally. Zero rotation relative to extras_link: the
+       CAD frame's +Y (the IMU's nose, see below; the IMU cable exits
+       toward -Y) ends up along base_link +X (robot front), since
+       extras_link itself carries a -90deg yaw. A mounting choice, not
+       measured: revisit if the real bracket is fitted another way round. -->
+  <xacro:property name="livox_imu_mount_xyz" value="0 0.04 0.2095" />
+  <xacro:property name="livox_imu_mount_rpy" value="0 0 0" />
+  <xacro:property name="livox_imu_mount_mesh_xyz" value="0.00045 -0.03574 -0.3029" />
+  <link name="$(arg prefix)livox_imu_mount_link">
+    <visual>
+      <origin xyz="${livox_imu_mount_mesh_xyz}" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/livox_imu_mount.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="livox_imu_mount_grey">
+        <color rgba="0.25 0.25 0.28 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="${livox_imu_mount_mesh_xyz}" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://ranger_xarm6_description/meshes/livox_imu_mount.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0.02" rpy="0 0 0" />
+      <mass value="0.15" />
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0003" />
+    </inertial>
+  </link>
+  <joint name="$(arg prefix)livox_imu_mount_joint" type="fixed">
+    <parent link="$(arg prefix)extras_link" />
+    <child link="$(arg prefix)livox_imu_mount_link" />
+    <origin xyz="${livox_imu_mount_xyz}" rpy="${livox_imu_mount_rpy}" />
+  </joint>
+
   <!-- HiPNUC HI14R3-232-000 (9-axis IMU/AHRS: 3-axis gyro + 3-axis accel +
        3-axis magnetometer, "R3" grade, RS-232, M12 connector variant),
-       mounted on top of extras_link. Real dimensions/mounting pulled from
-       HiPNUC's own HI14 datasheet (docs.hipnuc.com, rev 1.7): M12 variant
-       is 40 x 58.50 x 20mm, 4x d3.20mm mounting holes on a 34 x 39mm
-       pattern, M3 fixing screws, aluminum housing, <75g. No downloadable
-       mesh/CAD exists from HiPNUC publicly (checked: not in the datasheet,
-       not in their Python/C++ product SDKs on GitHub, "3D Step" is listed
-       under "Related Documents" but isn't a direct link): placeholder
-       box using these real measured dimensions, same treatment as the two
-       USB camera modules above.
-
-       "On top of extras_link" computed from that mesh's own actual
-       bounding box (extras_compressed.stl), not guessed: parsed the
-       binary STL directly (min/max vertex Z), giving a local Z half-span
-       of 0.2095m around the mesh's own centered origin, matching
-       extras_xyz's own Z (0.2095), itself derived the same "STEP bbox-
-       center" way per that property's own comment above. So the mesh's
-       real top surface sits at 0.2095 (extras_xyz.z) + 0.2095 (mesh half-
-       height) = 0.4190 in base_link's frame, nominally 0.2195 local Z
-       relative to extras_link (0.2095 mesh half-height + 0.010 half the
-       IMU's own 20mm height); extras_rpy's own yaw doesn't change this (a
-       pure Z-axis rotation leaves Z spans alone), so this holds
-       regardless of any future retuning of extras_xyz/rpy's X/Y or yaw
-       specifically (only a change to extras_xyz's own Z, or a mesh
-       replacement, would need this height revisited).
-       hipnuc_imu_xyz's actual value, "0 0.04 0.2205", is hand-tuned off
-       that nominal "0 0 0.2195": a small manual Z clearance bump plus a
-       4cm Y offset, both mounting-position choices, not re-derived here.
+       mounted inside livox_imu_mount_link, under its top deck. Datasheet
+       (docs.hipnuc.com HI14, rev 1.7): M12 variant 40 x 58.50 x 20mm,
+       4x d3.20mm holes on a 34 x 39mm pattern, <75g. Mesh:
+       hipnuc_imu.stl (mm, same CAD frame as livox_imu_mount.stl, see
+       above), including the M12 connector and a routed cable.
 
        Two frames, same physical-mount/native-sensor-axes split used
        throughout this file for camera optical frames:
-       hipnuc_imu_link: the MOUNT frame (hosts the visual/collision box).
-       Positioned at extras_link's top surface + half the IMU's own 20mm
-       height (0.2095+0.2095+0.010=0.4290 local Z relative to extras_link,
-       whose own origin is already at that 0.2095 height above base_link).
-       Rotated +90 deg yaw relative to extras_link (which itself carries a
-       -90deg yaw, extras_rpy) so hipnuc_imu_link ends up identity-aligned
-       with base_link (REP103 X-forward/Y-left/Z-up): a deliberate
-       mounting CHOICE (nothing forces this), picked so "IMU nose (see
-       below) points at the robot's own front" is the default; revisit
-       this rotation if the real unit ends up mounted facing another way.
+       hipnuc_imu_link: the MOUNT frame (hosts the mesh), at the IMU
+       housing's own center (CAD (-0.45, 35.74, 320.30)mm, i.e. 17.4mm
+       above livox_imu_mount_link's origin). Rotated +90deg yaw relative
+       to livox_imu_mount_link (whose axes are extras_link's, itself
+       -90deg yaw) so hipnuc_imu_link ends up identity-aligned with
+       base_link (REP103 X-forward/Y-left/Z-up). The mesh's visual origin
+       undoes that yaw: xyz = -Rz(-90deg) * c, c being the housing center
+       in CAD metres.
        hipnuc_imu_data_frame: the SENSOR's own native axis convention,
-       child of hipnuc_imu_link. Per the datasheet's own "10 Coordinate
+       child of hipnuc_imu_link. Per the datasheet's "10 Coordinate
        System" section (Figure 30) the HI14 body axes are Right-Forward-Up
-       (X=right, Y=forward/"nose", Z=up), NOT REP103's Forward-Left-Up:
-       a plain yaw won't reconcile the two on its own; the exact rotation
-       (-90deg yaw) is derived in the sensor-tags comment below where it's
-       actually used, since it's identical to the one this frame's own
-       joint applies. This is the frame the real sensor_msgs/Imu data
-       (both sim and the real HiPNUC ROS driver) should use as
-       header.frame_id; it, not hipnuc_imu_link, is what the sensor's
-       raw axes actually match. -->
-  <xacro:property name="hipnuc_imu_xyz" value="0 0.04 0.2205" />
+       (X=right, Y=forward/"nose", Z=up), NOT REP103's Forward-Left-Up; the
+       -90deg yaw below makes this frame coincide with the CAD frame's
+       own axes, i.e. assumes the STL's +Y is the housing's nose (the
+       58.5mm long axis, connector end at -Y). This is the frame the real
+       sensor_msgs/Imu data (both sim and the real HiPNUC ROS driver)
+       should use as header.frame_id. -->
+  <xacro:property name="hipnuc_imu_xyz" value="0 0 0.0174" />
   <xacro:property name="hipnuc_imu_rpy" value="0 0 1.570796" />
+  <xacro:property name="hipnuc_imu_mesh_xyz" value="-0.03574 -0.00045 -0.3203" />
   <link name="$(arg prefix)hipnuc_imu_link">
     <visual>
+      <origin xyz="${hipnuc_imu_mesh_xyz}" rpy="0 0 -1.570796" />
       <geometry>
-        <!-- X=0.0585 (58.5mm, sensor's own Y/"nose-tail" length, aligned
-             to this frame's own X/forward per the mounting choice above),
-             Y=0.040 (40mm width), Z=0.020 (20mm height): the M12
-             variant's real datasheet envelope, not the case's true
-             external shape (M12 connector stub not separately modeled). -->
-        <box size="0.0585 0.040 0.020" />
+        <mesh filename="package://ranger_xarm6_description/meshes/hipnuc_imu.stl" scale="0.001 0.001 0.001" />
       </geometry>
       <material name="hipnuc_imu_grey">
         <color rgba="0.7 0.7 0.72 1" />
       </material>
     </visual>
     <collision>
+      <origin xyz="${hipnuc_imu_mesh_xyz}" rpy="0 0 -1.570796" />
       <geometry>
-        <box size="0.0585 0.040 0.020" />
+        <mesh filename="package://ranger_xarm6_description/meshes/hipnuc_imu.stl" scale="0.001 0.001 0.001" />
       </geometry>
     </collision>
     <inertial>
@@ -514,7 +547,7 @@
     </inertial>
   </link>
   <joint name="$(arg prefix)hipnuc_imu_joint" type="fixed">
-    <parent link="$(arg prefix)extras_link" />
+    <parent link="$(arg prefix)livox_imu_mount_link" />
     <child link="$(arg prefix)hipnuc_imu_link" />
     <origin xyz="${hipnuc_imu_xyz}" rpy="${hipnuc_imu_rpy}" />
   </joint>
@@ -526,34 +559,30 @@
   </joint>
 
   <!-- Livox Mid-360 3D LIDAR (360deg horizontal, non-repetitive scanning),
-       mounted on extras_link. Nominal placement was "30mm above the
-       joint position of the IMU": same X/Y as hipnuc_imu_xyz, Z =
-       hipnuc_imu_xyz's own 0.2205 + 0.030 = 0.2505; livox_mid360_xyz's
-       actual value, "0 0.04 0.2805", is hand-tuned another 0.030 higher
-       than that nominal (same X/Y), a mounting-position choice, not
-       re-derived here (same treatment as hipnuc_imu_xyz's own hand-tuned
-       value above).
-       Real mesh (not a placeholder box, unlike the IMU): copied from a
-       sibling workspace's robotnik_sensors package (meshes/3d_lidar/
-       livox_mid_360.stl), which Robotnik ships in production for the
-       same Mid-360 unit on their own robots: own copy here since this
-       repo can't depend on a package from an unrelated workspace.
+       sitting on livox_imu_mount_link's top deck, centered on its 4-hole
+       pattern (the mount link's own Z axis, see above).
+       Real mesh: copied from a sibling workspace's robotnik_sensors
+       package (meshes/3d_lidar/livox_mid_360.stl), which Robotnik ships
+       in production for the same Mid-360 unit. Mesh visual/collision
+       origin rpy="1.57 0 0" and scale 0.001 are Robotnik-measured
+       mesh-alignment facts (STL authored in mm, needs a 90deg roll to
+       sit upright). After that roll the mesh's underside sits 25.93mm
+       below the link origin (the STL's own min Y), so
+       livox_mid360_xyz's Z = 0.041 (mount deck height) + 0.02593 =
+       0.06693: the lidar's base is flush on the deck.
        Two frames, same mount/native-origin split as the IMU above:
        livox_mid360_link: MOUNT frame (hosts the mesh). livox_mid360_rpy
-       is hand-tuned to "0 0 -1.570796" (same -90deg yaw as extras_rpy,
-       not cancelling it): combined with extras_link's own -90deg yaw,
+       "0 0 -1.570796" (same -90deg yaw as extras_rpy, not cancelling it,
+       unchanged from when this link hung directly off extras_link):
        livox_mid360_link ends up rotated 180deg in yaw relative to
        base_link, NOT identity-aligned the way hipnuc_imu_link and Weston
        Robot's own reference mount (github.com/westonrobot/
        wr_devkit_mapping's robot.urdf.xacro: livox_joint, zero rotation
        relative to base_link) are: a deliberate mounting-orientation
-       choice (e.g. connector/cable routing direction), not re-derived
-       here. Since the Mid-360 scans the full 360deg horizontally, this
-       yaw choice doesn't affect scan coverage, only which horizontal
-       angle in the raw scan corresponds to the robot's own front. Mesh
-       visual/collision origin rpy="1.57 0 0" and scale 0.001 are real,
-       Robotnik-measured mesh-alignment facts (STL authored in mm, needs
-       a 90deg roll to sit upright), not guessed.
+       choice (e.g. connector/cable routing direction). Since the Mid-360
+       scans the full 360deg horizontally, this yaw doesn't affect scan
+       coverage, only which horizontal angle in the raw scan corresponds
+       to the robot's own front.
        livox_frame: the SENSOR's own real point-cloud origin, child of
        livox_mid360_link, offset +0.0365 in local Z: also a real
        Robotnik-measured value (their own sensor_livox_mid_360 macro's
@@ -563,7 +592,7 @@
        LIO-SAM's default 'lidarFrame' config value, for drop-in
        compatibility with their mapping/nav stacks later if ever vendored
        here (wr_devkit_mapping, wr_devkit_navigation). -->
-  <xacro:property name="livox_mid360_xyz" value="0 0.04 0.2805" />
+  <xacro:property name="livox_mid360_xyz" value="0 0 0.06693" />
   <xacro:property name="livox_mid360_rpy" value="0 0 -1.570796" />
   <link name="$(arg prefix)livox_mid360_link">
     <visual>
@@ -588,7 +617,7 @@
     </inertial>
   </link>
   <joint name="$(arg prefix)livox_mid360_joint" type="fixed">
-    <parent link="$(arg prefix)extras_link" />
+    <parent link="$(arg prefix)livox_imu_mount_link" />
     <child link="$(arg prefix)livox_mid360_link" />
     <origin xyz="${livox_mid360_xyz}" rpy="${livox_mid360_rpy}" />
   </joint>

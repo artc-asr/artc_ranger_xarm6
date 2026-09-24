@@ -2,7 +2,7 @@
 <!--
   Ground plane + a physical contact wall (real collision geometry, not just
   an RViz marker) for force-control testing. Originally from Robotnik's
-  robotnik_gazebo_ignition package (now removed from this branch -- see
+  robotnik_gazebo_ignition package (now removed from this branch; see
   main branch for the Theron/Kairos setup); copied here so Ranger Mini 3 +
   xArm6 keeps the same test environment without that dependency.
 

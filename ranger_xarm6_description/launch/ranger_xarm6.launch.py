@@ -256,7 +256,7 @@ def launch_setup(context, *args, **kwargs):
     # real hardware is available to check against.
     enable_wrist_camera = LaunchConfiguration('enable_wrist_camera').perform(context).lower() in ('true', '1', 'yes')
     # HiPNUC HI14R3-232-000 IMU (see hipnuc_imu_link/hipnuc_imu_data_frame
-    # in ranger_xarm6.urdf.xacro), on top of extras_link. Sim only for now:
+    # in ranger_xarm6.urdf.xacro), inside livox_imu_mount_link. Sim only for now:
     # bridges the gz IMU sensor to a plain sensor_msgs/Imu topic. Real
     # hardware isn't wired here yet -- the official HiPNUC ROS2 driver
     # (hipnuc/products, ros/ros2/hipnuc_imu) needs vendoring as a new git
@@ -265,7 +265,7 @@ def launch_setup(context, *args, **kwargs):
     # added unprompted.
     enable_hipnuc_imu = LaunchConfiguration('enable_hipnuc_imu').perform(context).lower() in ('true', '1', 'yes')
     # Livox Mid-360 (see livox_mid360_link/livox_frame in
-    # ranger_xarm6.urdf.xacro), on extras_link. Real hardware IS wired
+    # ranger_xarm6.urdf.xacro), on livox_imu_mount_link. Real hardware IS wired
     # here (unlike the IMU above): livox_ros_driver2 is already vendored
     # and built in this exact workspace, so it doesn't carry the same
     # "new submodule" decision the HiPNUC driver does.
