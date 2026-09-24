@@ -7,9 +7,10 @@ namespaced 'arm_velocity_controller/commands' topic and
 '{ns}_joint1'..'{ns}_joint6' joint names) sees an identical interface
 regardless of which mode is active:
 
-    ros2 launch ranger_xarm6_description ranger_xarm6.launch.py                    # full physics, RViz for viz, gz headless (default)
+    ros2 launch ranger_xarm6_description ranger_xarm6.launch.py                    # full physics, empty world, RViz for viz, gz headless (default)
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py gz_gui:=true       # also pop the Gazebo GUI window
-    ros2 launch ranger_xarm6_description ranger_xarm6.launch.py world:=artc_lab.world \
+    ros2 launch ranger_xarm6_description ranger_xarm6.launch.py world:=tested_world.world  # ground + contact wall (force-control tests)
+    ros2 launch ranger_xarm6_description ranger_xarm6.launch.py world:=artc_lab.world \\
         x:=0.94 y:=4.35 yaw:=-1.5708                                               # lab room, robot at its home spot
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py gazebo:=false      # skip physics entirely -- structural/visual check only
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py sim:=false \\
@@ -447,6 +448,20 @@ def launch_setup(context, *args, **kwargs):
             }],
             output='screen',
         )
+        # The world's models (walls, tables, cubes, ...) as RViz markers:
+        # RViz can't see inside gz-sim, so this mirrors the same .world
+        # file, following non-static models live (see world_markers.py).
+        world_markers_node = Node(
+            package='ranger_xarm6_description',
+            executable='world_markers.py',
+            namespace=robot_id,
+            parameters=[{
+                'world_file': world_path,
+                'frame_id': f'{prefix}odom',
+                'use_sim_time': gazebo,
+            }],
+            output='screen',
+        )
 
         if not gazebo:
             # No physics: just publish a static robot -- no controller_manager,
@@ -466,6 +481,7 @@ def launch_setup(context, *args, **kwargs):
                 robot_state_publisher_node,
                 joint_state_publisher_node,
                 odom_tf_publisher,
+                world_markers_node,
                 *([rviz_node] if run_rviz else []),
             ]
 
@@ -660,6 +676,7 @@ def launch_setup(context, *args, **kwargs):
         return [
             robot_state_publisher_node,
             odom_tf_publisher,
+            world_markers_node,
             *[RegisterEventHandler(OnProcessStart(target_action=robot_state_publisher_node, on_start=a)) for a in startup_actions],
             RegisterEventHandler(OnProcessStart(target_action=robot_state_publisher_node, on_start=spawn_entity_node)),
             RegisterEventHandler(OnProcessExit(target_action=spawn_entity_node, on_exit=post_spawn_actions)),
@@ -894,7 +911,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gazebo', default_value='true', description='sim only: true (default) = full Gazebo Harmonic physics (headless -- see gz_gui), false = RViz-only structural view (robot_state_publisher + joint_state_publisher + static TF, no controller_manager)'),
         DeclareLaunchArgument('gz_gui', default_value='false', description="sim+gazebo only: also launch Gazebo's own GUI window (default false -- RViz already visualizes)"),
         DeclareLaunchArgument('launch_gazebo', default_value='true', description='sim+gazebo only: false when an external launcher (e.g. wbcc_bringup/simulation.launch.py) already started Gazebo + its /clock bridge'),
-        DeclareLaunchArgument('world', default_value='tested_world.world', description="sim+gazebo only: world file, a name in this package's worlds/ dir (tested_world.world: contact wall; artc_lab.world: pick-and-place lab room, spawn at x:=0.94 y:=4.35 yaw:=-1.5708) or a path"),
+        DeclareLaunchArgument('world', default_value='empty.world', description="sim+gazebo only: world file, a name in this package's worlds/ dir (empty.world: ground plane only; tested_world.world: contact wall; artc_lab.world: pick-and-place lab room, spawn at x:=0.94 y:=4.35 yaw:=-1.5708) or a path"),
         DeclareLaunchArgument('robot_id', default_value='robot_a', description='ROS namespace + joint/frame prefix'),
         DeclareLaunchArgument('robot_ip', default_value='192.168.1.231', description='xArm6 IP (real hardware only; from ARTC handover note, confirm against your unit)'),
         DeclareLaunchArgument('can_device', default_value='can0', description='Ranger Mini 3 CAN interface (real hardware only)'),

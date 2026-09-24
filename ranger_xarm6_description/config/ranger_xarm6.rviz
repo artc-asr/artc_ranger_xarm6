@@ -59,6 +59,21 @@ Visualization Manager:
         Reliability Policy: Reliable
       Value: true
 
+    # The Gazebo world's models (walls, tables, cubes, ...), mirrored from
+    # the loaded .world file by scripts/world_markers.py (sim + gazebo
+    # only). Transient Local: that node latches its static markers.
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Gazebo World
+      Namespaces: {}
+      Topic:
+        Value: /robot_a/world_markers
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Value: true
+
     # Global (not namespaced) topic -- matches wbcc_path/path_publisher.py,
     # which is launched without a namespace (see simulation.launch.py) the
     # same way Robotnik's own rviz_config.rviz displayed it (same topic,
