@@ -38,11 +38,14 @@
       <direction>-0.3 0.2 -1</direction>
     </light>
 
+    <!-- Floor visual sized to the room (walls included), like a
+         CoppeliaSim floor; the collision plane is infinite regardless. -->
     <model name="ground_plane">
       <static>true</static>
+      <pose>5.0 2.6 0 0 0 0</pose>
       <link name="link">
-        <collision name="collision"><geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry></collision>
-        <visual name="visual"><geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry>
+        <collision name="collision"><geometry><plane><normal>0 0 1</normal></plane></geometry></collision>
+        <visual name="visual"><geometry><plane><normal>0 0 1</normal><size>10.2 5.4</size></plane></geometry>
           <material><ambient>0.5 0.5 0.5 1</ambient><diffuse>0.5 0.5 0.5 1</diffuse></material></visual>
       </link>
     </model>
@@ -88,16 +91,21 @@
     </model>
     <model name="cupboard">
       <static>true</static>
-        <link name="body"><pose>9.541 4.484 0.900 0 0 0</pose><collision name="body_collision"><geometry><box><size>0.878 1.391 1.800</size></box></geometry></collision><visual name="body_visual"><geometry><box><size>0.878 1.391 1.800</size></box></geometry><material><ambient>0.6 0.35 0.7 1</ambient><diffuse>0.6 0.35 0.7 1</diffuse></material></visual></link>
+        <link name="bottom"><pose>9.541 4.484 0.010 0 0 0</pose><collision name="bottom_collision"><geometry><box><size>0.878 1.391 0.020</size></box></geometry></collision><visual name="bottom_visual"><geometry><box><size>0.878 1.391 0.020</size></box></geometry><material><ambient>0.55 0.4 0.25 1</ambient><diffuse>0.55 0.4 0.25 1</diffuse></material></visual></link>
+        <link name="middle"><pose>9.541 4.484 0.900 0 0 0</pose><collision name="middle_collision"><geometry><box><size>0.878 1.391 0.020</size></box></geometry></collision><visual name="middle_visual"><geometry><box><size>0.878 1.391 0.020</size></box></geometry><material><ambient>0.55 0.4 0.25 1</ambient><diffuse>0.55 0.4 0.25 1</diffuse></material></visual></link>
+        <link name="top"><pose>9.541 4.484 1.790 0 0 0</pose><collision name="top_collision"><geometry><box><size>0.878 1.391 0.020</size></box></geometry></collision><visual name="top_visual"><geometry><box><size>0.878 1.391 0.020</size></box></geometry><material><ambient>0.55 0.4 0.25 1</ambient><diffuse>0.55 0.4 0.25 1</diffuse></material></visual></link>
+        <link name="back"><pose>9.970 4.484 0.900 0 0 0</pose><collision name="back_collision"><geometry><box><size>0.020 1.391 1.800</size></box></geometry></collision><visual name="back_visual"><geometry><box><size>0.020 1.391 1.800</size></box></geometry><material><ambient>0.55 0.4 0.25 1</ambient><diffuse>0.55 0.4 0.25 1</diffuse></material></visual></link>
+        <link name="left"><pose>9.541 5.170 0.900 0 0 0</pose><collision name="left_collision"><geometry><box><size>0.878 0.020 1.800</size></box></geometry></collision><visual name="left_visual"><geometry><box><size>0.878 0.020 1.800</size></box></geometry><material><ambient>0.55 0.4 0.25 1</ambient><diffuse>0.55 0.4 0.25 1</diffuse></material></visual></link>
+        <link name="right"><pose>9.541 3.799 0.900 0 0 0</pose><collision name="right_collision"><geometry><box><size>0.878 0.020 1.800</size></box></geometry></collision><visual name="right_visual"><geometry><box><size>0.878 0.020 1.800</size></box></geometry><material><ambient>0.55 0.4 0.25 1</ambient><diffuse>0.55 0.4 0.25 1</diffuse></material></visual></link>
     </model>
     <model name="plant">
       <static>true</static>
       <link name="pot"><pose>9.49 0.345 0.2 0 0 0</pose>
         <collision name="c"><geometry><cylinder><radius>0.22</radius><length>0.4</length></cylinder></geometry></collision>
         <visual name="v"><geometry><cylinder><radius>0.22</radius><length>0.4</length></cylinder></geometry><material><ambient>0.45 0.25 0.15 1</ambient><diffuse>0.45 0.25 0.15 1</diffuse></material></visual></link>
-      <link name="foliage"><pose>9.49 0.345 0.85 0 0 0</pose>
-        <collision name="c"><geometry><cylinder><radius>0.3</radius><length>0.9</length></cylinder></geometry></collision>
-        <visual name="v"><geometry><cylinder><radius>0.3</radius><length>0.9</length></cylinder></geometry><material><ambient>0.15 0.5 0.15 1</ambient><diffuse>0.15 0.5 0.15 1</diffuse></material></visual></link>
+      <link name="foliage"><pose>9.419 0.299 0.414 0 0 0</pose>
+        <collision name="c"><pose>0.071 0.046 0.252 0 0 0</pose><geometry><cylinder><radius>0.335</radius><length>0.532</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><mesh><uri>package://ranger_xarm6_description/meshes/big_plant.stl</uri><scale>2.3 2.3 3.5</scale></mesh></geometry><material><ambient>0.15 0.5 0.15 1</ambient><diffuse>0.15 0.5 0.15 1</diffuse></material></visual></link>
     </model>
     <model name="cube_0">
       <pose>2.600 4.120 0.776 0 0 0</pose>

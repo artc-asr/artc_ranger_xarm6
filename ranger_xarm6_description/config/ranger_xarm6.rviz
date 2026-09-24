@@ -11,6 +11,9 @@ Visualization Manager:
       Enabled: true
       Name: Grid
       Plane: XY
+      # 20x20m, centred on odom's origin: covers artc_lab.world's
+      # 10 x 5.2m room (which starts at the origin), not just half of it.
+      Plane Cell Count: 20
       Cell Size: 1
       Line Style:
         Line Width: 0.03

@@ -32,6 +32,22 @@ TABLES = [
 CUPBOARD = ('cupboard', 9.102, 9.98, 3.789, 5.18, 1.8)
 PLANT = ('plant', 9.49, 0.345)  # name, centre x, centre y (0.98 x 0.69 m spot)
 
+# Cupboard: Gazebo Fuel's OpenRobotics/Cabinet (Nate Koenig, CC0), an open
+# wooden shelf built from 2cm box plates (0.45 x 0.45 x 1.02m, back plate
+# on +x), stretched to the drawing's footprint. Open side faces -x, into
+# the room. Its Gazebo/Wood material is a Gazebo-classic script that
+# Harmonic ignores, so the colour is set explicitly.
+CABINET_PLATE = 0.02
+# Plant foliage: Gazebo Fuel's slhdn/plant (big_plant.stl, Alireza Ahmadi,
+# CC-BY 4.0), copied into meshes/. The raw mesh is a 28 x 29 x 15cm leaf
+# rosette with its bbox off-centre; scaled up and set on a pot. PLANT_MESH_*
+# are the raw mesh's bbox size, centre (x, y) and min z, measured from the STL.
+PLANT_MESH = 'package://ranger_xarm6_description/meshes/big_plant.stl'
+PLANT_MESH_SIZE = (0.285, 0.291, 0.152)
+PLANT_MESH_CX, PLANT_MESH_CY, PLANT_MESH_Z0 = 0.031, 0.020, -0.004
+PLANT_SCALE = (2.3, 2.3, 3.5)  # -> ~0.66 x 0.67 x 0.53m; taller than wide
+POT_R, POT_H = 0.22, 0.4
+
 # Cubes near each table's aisle-side edge (the xArm reaches ~0.5m past
 # the robot's rear, so objects deep in a 1.2m table would be out of reach).
 # (table, x, y, rgb)
@@ -78,6 +94,36 @@ def table(name, x0, x1, y0, y1):
     return static_model(name, links)
 
 
+def cabinet(name, x0, x1, y0, y1, h):
+    wood, t = (0.55, 0.4, 0.25), CABINET_PLATE
+    cx, cy, dx, dy = (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0
+    return static_model(name, [
+        box('bottom', (dx, dy, t), (cx, cy, t / 2), wood),
+        box('middle', (dx, dy, t), (cx, cy, h / 2), wood),
+        box('top', (dx, dy, t), (cx, cy, h - t / 2), wood),
+        box('back', (t, dy, h), (x1 - t / 2, cy, h / 2), wood),
+        box('left', (dx, t, h), (cx, y1 - t / 2, h / 2), wood),
+        box('right', (dx, t, h), (cx, y0 + t / 2, h / 2), wood),
+    ])
+
+
+def plant(name, px, py):
+    sx, sy, sz = PLANT_SCALE
+    mx, my, mz = px - PLANT_MESH_CX * sx, py - PLANT_MESH_CY * sy, POT_H - PLANT_MESH_Z0 * sz
+    leaf_h = PLANT_MESH_SIZE[2] * sz
+    leaf_r = max(PLANT_MESH_SIZE[0] * sx, PLANT_MESH_SIZE[1] * sy) / 2
+    return f'''    <model name="{name}">
+      <static>true</static>
+      <link name="pot"><pose>{px} {py} {POT_H / 2} 0 0 0</pose>
+        <collision name="c"><geometry><cylinder><radius>{POT_R}</radius><length>{POT_H}</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>{POT_R}</radius><length>{POT_H}</length></cylinder></geometry><material><ambient>0.45 0.25 0.15 1</ambient><diffuse>0.45 0.25 0.15 1</diffuse></material></visual></link>
+      <link name="foliage"><pose>{mx:.3f} {my:.3f} {mz:.3f} 0 0 0</pose>
+        <collision name="c"><pose>{PLANT_MESH_CX * sx:.3f} {PLANT_MESH_CY * sy:.3f} {PLANT_MESH_Z0 * sz + leaf_h / 2:.3f} 0 0 0</pose><geometry><cylinder><radius>{leaf_r:.3f}</radius><length>{leaf_h:.3f}</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><mesh><uri>{PLANT_MESH}</uri><scale>{sx} {sy} {sz}</scale></mesh></geometry><material><ambient>0.15 0.5 0.15 1</ambient><diffuse>0.15 0.5 0.15 1</diffuse></material></visual></link>
+    </model>
+'''
+
+
 def cube(i, x, y, rgb):
     r, g, b = rgb
     m = 0.05
@@ -102,20 +148,9 @@ def main():
         box('west', (WALL_T, ROOM_Y, WALL_H), (-WALL_T / 2, ROOM_Y / 2, WALL_H / 2), wall),
         box('east', (WALL_T, ROOM_Y, WALL_H), (ROOM_X + WALL_T / 2, ROOM_Y / 2, WALL_H / 2), wall),
     ])
-    name, x0, x1, y0, y1, h = CUPBOARD
-    cupboard = static_model(name, [box('body', (x1 - x0, y1 - y0, h), ((x0 + x1) / 2, (y0 + y1) / 2, h / 2), (0.6, 0.35, 0.7))])
-    pname, px, py = PLANT
-    plant = f'''    <model name="{pname}">
-      <static>true</static>
-      <link name="pot"><pose>{px} {py} 0.2 0 0 0</pose>
-        <collision name="c"><geometry><cylinder><radius>0.22</radius><length>0.4</length></cylinder></geometry></collision>
-        <visual name="v"><geometry><cylinder><radius>0.22</radius><length>0.4</length></cylinder></geometry><material><ambient>0.45 0.25 0.15 1</ambient><diffuse>0.45 0.25 0.15 1</diffuse></material></visual></link>
-      <link name="foliage"><pose>{px} {py} 0.85 0 0 0</pose>
-        <collision name="c"><geometry><cylinder><radius>0.3</radius><length>0.9</length></cylinder></geometry></collision>
-        <visual name="v"><geometry><cylinder><radius>0.3</radius><length>0.9</length></cylinder></geometry><material><ambient>0.15 0.5 0.15 1</ambient><diffuse>0.15 0.5 0.15 1</diffuse></material></visual></link>
-    </model>
-'''
-    models = walls + ''.join(table(*t) for t in TABLES) + cupboard + plant
+    cupboard = cabinet(*CUPBOARD)
+    plant_model = plant(*PLANT)
+    models = walls + ''.join(table(*t) for t in TABLES) + cupboard + plant_model
     models += ''.join(cube(i, x, y, rgb) for i, (_, x, y, rgb) in enumerate(CUBES))
 
     world = f'''<?xml version="1.0" ?>
@@ -158,11 +193,14 @@ def main():
       <direction>-0.3 0.2 -1</direction>
     </light>
 
+    <!-- Floor visual sized to the room (walls included), like a
+         CoppeliaSim floor; the collision plane is infinite regardless. -->
     <model name="ground_plane">
       <static>true</static>
+      <pose>{ROOM_X / 2} {ROOM_Y / 2} 0 0 0 0</pose>
       <link name="link">
-        <collision name="collision"><geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry></collision>
-        <visual name="visual"><geometry><plane><normal>0 0 1</normal><size>30 30</size></plane></geometry>
+        <collision name="collision"><geometry><plane><normal>0 0 1</normal></plane></geometry></collision>
+        <visual name="visual"><geometry><plane><normal>0 0 1</normal><size>{ROOM_X + 2 * WALL_T:.1f} {ROOM_Y + 2 * WALL_T:.1f}</size></plane></geometry>
           <material><ambient>0.5 0.5 0.5 1</ambient><diffuse>0.5 0.5 0.5 1</diffuse></material></visual>
       </link>
     </model>

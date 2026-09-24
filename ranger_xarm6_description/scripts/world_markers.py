@@ -6,8 +6,9 @@ world's walls, tables, cubes etc. live only inside gz-sim. This node
 parses the same SDF file gz-sim loaded and publishes one marker per
 <visual> (box, cylinder, sphere; mesh when its uri is file:// or
 package://), colored from the visual's own <material>. Ground planes are
-skipped: RViz's own grid already marks the floor, and a 100x100m slab
-would hide it.
+drawn as a thin slab just under z=0 (so RViz's grid stays visible on top)
+when sized like a room floor (artc_lab.world's); bigger ones, like the
+100x100m planes in empty.world, are skipped rather than swamping the view.
 
 Static models are drawn at their SDF pose. Non-static models (e.g.
 artc_lab.world's cubes) follow the live simulation: their world poses
@@ -32,6 +33,11 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from gz.transport13 import Node as GzNode
 from gz.msgs10.pose_v_pb2 import Pose_V
+
+
+# Largest ground plane (m, either side) drawn as a floor; see module doc.
+MAX_FLOOR_SIZE = 50.0
+FLOOR_THICKNESS = 0.01
 
 
 def pose_matrix(text):
@@ -81,7 +87,11 @@ class WorldMarkers(Node):
                     marker.id = next_id
                     next_id += 1
                     marker.color.r, marker.color.g, marker.color.b, marker.color.a = color_of(visual)
-                    parts.append((marker, link_m @ pose_matrix(visual.findtext('pose'))))
+                    local_m = link_m @ pose_matrix(visual.findtext('pose'))
+                    if visual.find('geometry/plane') is not None:
+                        # Slab top 1mm below z=0 so it doesn't z-fight RViz's grid.
+                        local_m = local_m @ pose_matrix(f'0 0 {-(FLOOR_THICKNESS / 2 + 0.001)}')
+                    parts.append((marker, local_m))
             if not parts:
                 continue
             self.models[name] = pose_matrix(model.findtext('pose')), parts
@@ -103,8 +113,15 @@ class WorldMarkers(Node):
         m = Marker()
         m.action = Marker.ADD
         shape = geometry[0] if len(geometry) else None
-        if shape is None or shape.tag == 'plane':
+        if shape is None:
             return None
+        if shape.tag == 'plane':
+            sx, sy = (float(x) for x in shape.findtext('size', '0 0').split())
+            if not 0 < max(sx, sy) <= MAX_FLOOR_SIZE:
+                return None
+            m.type = Marker.CUBE
+            m.scale.x, m.scale.y, m.scale.z = sx, sy, FLOOR_THICKNESS
+            return m
         if shape.tag == 'box':
             m.type = Marker.CUBE
             m.scale.x, m.scale.y, m.scale.z = (float(x) for x in shape.findtext('size').split())
