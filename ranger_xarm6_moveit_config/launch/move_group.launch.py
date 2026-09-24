@@ -7,6 +7,12 @@ real), in the same robot_id namespace:
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false
     ros2 launch ranger_xarm6_moveit_config move_group.launch.py
 
+MoveIt's model has the base as x/y/z/theta joints (urdf/ranger_xarm6_moveit.urdf.xacro),
+fed from odom -> base_link TF by base_joint_state_publisher.py (started
+here). Base plans are executed by ranger_xarm6_manipulation's
+base_trajectory_server.py, so run that package's control.launch.py for
+anything that moves the base.
+
 MoveIt executes arm plans on arm_trajectory_controller, which is loaded
 inactive; ranger_xarm6_manipulation's coordinator switches it in. To plan
 and execute from RViz alone, switch first:
@@ -41,15 +47,16 @@ def launch_setup(context, *args, **kwargs):
     use_rviz = LaunchConfiguration('use_rviz').perform(context).lower() in ('true', '1', 'yes')
     prefix = f'{robot_id}_' if robot_id else ''
 
-    description_share = get_package_share_directory('ranger_xarm6_description')
     moveit_share = get_package_share_directory('ranger_xarm6_moveit_config')
 
-    # Same xacro as the running robot, so collision geometry matches.
-    # ros2_control_plugin='none' only skips the Gazebo/hardware blocks,
-    # which MoveIt doesn't read.
+    # The running robot's own xacro, wrapped with the base's x/y/theta
+    # joints (see urdf/ranger_xarm6_moveit.urdf.xacro), so collision
+    # geometry matches. ros2_control_plugin='none' only skips the
+    # Gazebo/hardware blocks, which MoveIt doesn't read.
     robot_description = xacro.process_file(
-        os.path.join(description_share, 'robots', 'ranger_xarm6.urdf.xacro'),
-        mappings={'prefix': prefix, 'robot_namespace': robot_id, 'ros2_control_plugin': 'none'},
+        os.path.join(moveit_share, 'urdf', 'ranger_xarm6_moveit.urdf.xacro'),
+        mappings={'prefix': prefix, 'robot_namespace': robot_id, 'ros2_control_plugin': 'none',
+                  'base_workspace': LaunchConfiguration('base_workspace').perform(context)},
     ).toxml()
     robot_description_semantic = xacro.process_file(
         os.path.join(moveit_share, 'srdf', 'ranger_xarm6.srdf.xacro'),
@@ -97,7 +104,17 @@ def launch_setup(context, *args, **kwargs):
         parameters=[moveit_params, controllers],
     )
 
-    nodes = [move_group]
+    # The base's odom -> base_link TF as MoveIt's base_x/y/z/theta joint
+    # states; without it move_group has no complete current state.
+    base_joint_states = Node(
+        package='ranger_xarm6_moveit_config',
+        executable='base_joint_state_publisher.py',
+        namespace=robot_id,
+        parameters=[{'prefix': prefix, 'use_sim_time': use_sim_time}],
+        output='screen',
+    )
+
+    nodes = [move_group, base_joint_states]
     if use_rviz:
         nodes.append(Node(
             package='rviz2',
@@ -120,5 +137,6 @@ def generate_launch_description():
         DeclareLaunchArgument('robot_id', default_value='robot_a', description='ROS namespace + joint/frame prefix; must match ranger_xarm6.launch.py'),
         DeclareLaunchArgument('use_sim_time', default_value='true', description='true with Gazebo, false on real hardware'),
         DeclareLaunchArgument('use_rviz', default_value='true', description='RViz with the MotionPlanning panel'),
+        DeclareLaunchArgument('base_workspace', default_value='20.0', description="Half-width [m] of the square around odom's origin the base may plan in"),
         OpaqueFunction(function=launch_setup),
     ])

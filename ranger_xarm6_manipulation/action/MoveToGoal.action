@@ -1,24 +1,30 @@
-# Move the mobile manipulator to a goal, base and/or arm.
+# Move the mobile manipulator to a goal, base and/or arm. Every motion is
+# planned by MoveIt, base included, and the base never translates and
+# rotates at once (Ranger: crab at a fixed heading, or spin in place).
 #
-# SEQUENTIAL: arm to transit_state -> base to base_goal -> arm to its goal.
-#   Each stage runs only if needed (move_base / move_arm).
-# WHOLE_BODY: base and arm planned together (not implemented yet; rejected).
-uint8 SEQUENTIAL=0
-uint8 WHOLE_BODY=1
+# SEQUENTIAL: arm to transit_state -> base crab to base_goal x/y -> base
+#   spin to base_goal theta -> arm to its goal. Each stage runs only if
+#   needed (move_base / move_arm).
+# WHOLE_BODY: base spin to base_goal theta (if move_base), then base crab
+#   and arm in one plan, moving together. With move_arm and an arm pose
+#   goal but no move_base, the base position is chosen to reach the pose.
+# DEFAULT: the coordinator's default_mode (control.launch.py's controller).
+uint8 DEFAULT=0
+uint8 SEQUENTIAL=1
+uint8 WHOLE_BODY=2
 uint8 mode
 
 # Base target in the odom frame (x [m], y [m], theta [rad]).
 bool move_base
 geometry_msgs/Pose2D base_goal
 
-# SRDF named state of group 'arm' held while the base moves.
+# SRDF named state of group 'arm' held while the base moves (SEQUENTIAL).
 # Empty = "stow".
 string transit_state
 
-# Arm target, applied after the base arrives. arm_named_goal (an SRDF
-# named state) wins if non-empty; otherwise arm_pose_goal is the target
-# pose of link_tcp. Its frame_id is resolved when the arm is planned, so
-# base_link-relative goals mean "relative to where the base ended up".
+# Arm target. arm_named_goal (an SRDF named state) wins if non-empty;
+# otherwise arm_pose_goal is the target pose of link_tcp. A pose in
+# base_link means relative to where the base ends up.
 bool move_arm
 string arm_named_goal
 geometry_msgs/PoseStamped arm_pose_goal
@@ -29,6 +35,6 @@ float64 velocity_scaling
 bool success
 string message
 ---
-# transit | base | arm
+# transit | translate | rotate | placement | whole_body | arm
 string stage
 string status

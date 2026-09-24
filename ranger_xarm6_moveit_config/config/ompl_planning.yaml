@@ -32,9 +32,22 @@ gripper:
   default_planner_config: RRTConnectkConfigDefault
   planner_configs: [RRTConnectkConfigDefault]
 
-# Base-only planning (planar x/y/yaw): needs workspace bounds in the request.
-# Sequential mode drives the base directly through base_trajectory_server.py
-# instead; this is here for RViz experiments and the future whole-body mode.
-base:
+# Base groups (urdf/ranger_xarm6_moveit.urdf.xacro). longest_valid_segment_fraction
+# is a fraction of the group's joint-space extent, which the base's
+# +-base_workspace x/y range dominates: 0.0002 is ~1.6cm of base travel
+# at the default 20m, ~2.6cm (summed over all joints) for whole_body.
+base_translation:
   default_planner_config: RRTConnectkConfigDefault
   planner_configs: [RRTConnectkConfigDefault, RRTstarkConfigDefault]
+  longest_valid_segment_fraction: 0.0002
+
+base_rotation:
+  default_planner_config: RRTConnectkConfigDefault
+  planner_configs: [RRTConnectkConfigDefault]
+  # One continuous joint (extent pi): ~0.6 deg between checks.
+  longest_valid_segment_fraction: 0.003
+
+whole_body:
+  default_planner_config: RRTConnectkConfigDefault
+  planner_configs: [RRTConnectkConfigDefault, RRTstarkConfigDefault, BiTRRTkConfigDefault]
+  longest_valid_segment_fraction: 0.0002

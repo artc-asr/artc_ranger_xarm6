@@ -9,7 +9,7 @@ install(
 )
 
 install(
-  PROGRAMS scripts/base_pose_publisher.py scripts/gz_lidar_to_pointcloud.py scripts/fix_wrench_frame_id.py scripts/world_markers.py
+  PROGRAMS scripts/base_pose_publisher.py scripts/gz_lidar_to_pointcloud.py scripts/fix_wrench_frame_id.py scripts/world_markers.py scripts/world_collision_objects.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

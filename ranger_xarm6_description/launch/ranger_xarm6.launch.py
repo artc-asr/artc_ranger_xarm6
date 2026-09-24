@@ -462,6 +462,21 @@ def launch_setup(context, *args, **kwargs):
             }],
             output='screen',
         )
+        # The same world's static models as MoveIt collision objects, so
+        # anything planning on top of this bringup (e.g.
+        # ranger_xarm6_manipulation's control.launch.py) avoids them
+        # without being told the world again (see world_collision_objects.py).
+        world_collision_node = Node(
+            package='ranger_xarm6_description',
+            executable='world_collision_objects.py',
+            namespace=robot_id,
+            parameters=[{
+                'world_file': world_path,
+                'frame_id': f'{prefix}odom',
+                'use_sim_time': gazebo,
+            }],
+            output='screen',
+        )
 
         if not gazebo:
             # No physics: just publish a static robot -- no controller_manager,
@@ -482,6 +497,7 @@ def launch_setup(context, *args, **kwargs):
                 joint_state_publisher_node,
                 odom_tf_publisher,
                 world_markers_node,
+                world_collision_node,
                 *([rviz_node] if run_rviz else []),
             ]
 
@@ -677,6 +693,7 @@ def launch_setup(context, *args, **kwargs):
             robot_state_publisher_node,
             odom_tf_publisher,
             world_markers_node,
+            world_collision_node,
             *[RegisterEventHandler(OnProcessStart(target_action=robot_state_publisher_node, on_start=a)) for a in startup_actions],
             RegisterEventHandler(OnProcessStart(target_action=robot_state_publisher_node, on_start=spawn_entity_node)),
             RegisterEventHandler(OnProcessExit(target_action=spawn_entity_node, on_exit=post_spawn_actions)),

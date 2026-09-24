@@ -15,7 +15,8 @@ Ackermann/spin OR crab, never both at once), then:
   1. Publishes the result as the live odom->base_link TF (dynamic, not
      static -- this is now a genuinely moving frame), so wbc.py's
      TransformListener-based update_robot_state() sees it every tick.
-  2. Teleports the Gazebo entity to match, via the gz-transport Python
+  2. Teleports the Gazebo entity to match (only when needed, see
+     _gz_teleport_loop), via the gz-transport Python
      API directly (not the 'gz service' CLI subprocess wbc_visualize.py
      used to shell out to for the one-off Initial Position teleport --
      that's ~fine at one call per button click, far too slow to call
@@ -50,6 +51,7 @@ from tf_transformations import quaternion_from_euler
 
 from gz.transport13 import Node as GzNode
 from gz.msgs10 import pose_pb2, boolean_pb2, scene_pb2, empty_pb2
+from gz.msgs10.pose_v_pb2 import Pose_V
 
 
 class BasePosePublisher(Node):
@@ -85,6 +87,10 @@ class BasePosePublisher(Node):
         self.declare_parameter('tf_rate', 50.0)         # [Hz] cmd_vel integration + TF publish
         self.declare_parameter('gz_teleport_rate', 30.0)  # [Hz] Gazebo entity teleport (own thread)
         self.declare_parameter('cmd_vel_timeout', 0.5)    # [s] stale cmd_vel -> treat as zero
+        # While the commanded pose is unchanged, re-teleport only once the
+        # entity's x/y/yaw has drifted this far from it (see _gz_teleport_loop).
+        self.declare_parameter('gz_drift_tolerance', 0.003)        # [m]
+        self.declare_parameter('gz_drift_angle_tolerance', 0.005)  # [rad], yaw
 
         self.frame_id = self.get_parameter('frame_id').value
         self.child_frame_id = self.get_parameter('child_frame_id').value
@@ -92,6 +98,9 @@ class BasePosePublisher(Node):
         self.gz_entity_name = self.get_parameter('gz_entity_name').value
         self.cmd_vel_timeout = self.get_parameter('cmd_vel_timeout').value
         self.max_x = self.get_parameter('max_x').value
+        self.drift_tolerance = self.get_parameter('gz_drift_tolerance').value
+        self.drift_angle_tolerance = self.get_parameter('gz_drift_angle_tolerance').value
+        self._gz_pose = None  # (x, y, z, qx, qy, qz, qw) as Gazebo last reported it
 
         self.lock = threading.Lock()
         self.x = self.get_parameter('x').value
@@ -105,6 +114,7 @@ class BasePosePublisher(Node):
 
         self.broadcaster = TransformBroadcaster(self)
         self.gz_node = GzNode()
+        self.gz_node.subscribe(Pose_V, f'/world/{self.gz_world}/pose/info', self._gz_pose_cb)
         # TF publishes immediately, NOT gated on the Gazebo entity existing
         # (see _gz_teleport_loop's own comment for why that wait can now
         # take longer than the old fixed timeout did) -- wbc.py's
@@ -225,13 +235,52 @@ class BasePosePublisher(Node):
     # deadline, TF already publishing independently above) so however long
     # Gazebo actually takes to spawn, this simply keeps waiting instead of
     # giving up and hammering a nonexistent entity.
+    #
+    # Teleporting a parked base every period shook the arm's joints
+    # (measured: +-0.015 rad, up to 7 rad/s joint velocity at 30 Hz, none
+    # without), enough for MoveIt to reject the next trajectory's start
+    # state: the chassis rests ~1cm below the 'z' parameter on its wheels,
+    # so each teleport to 'z' dropped it again. So:
+    #  - teleports keep the height Gazebo reports (where it rests), not 'z';
+    #  - only when needed: the commanded pose changed (the base is
+    #    driving), or the entity drifted from it (its wheels are passive,
+    #    so the arm's reaction forces roll it: measured 0.2m and 20 deg
+    #    over two arm swings with no teleports at all).
     def _gz_teleport_loop(self, period):
         self._wait_for_entity()
+        sent = None
         while rclpy.ok():
             with self.lock:
-                x, y, z, yaw = self.x, self.y, self.z, self.yaw
-            self._gz_set_pose(x, y, z, yaw)
+                target = (self.x, self.y, self.z, self.yaw)
+            if target != sent or self._drifted(target):
+                x, y, z, yaw = target
+                actual = self._gz_pose
+                if self._gz_set_pose(x, y, actual[2] if actual else z, yaw):
+                    sent = target
             time.sleep(period)
+
+    def _gz_pose_cb(self, msg):
+        for p in msg.pose:
+            if p.name == self.gz_entity_name:
+                self._gz_pose = (p.position.x, p.position.y, p.position.z,
+                                 p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w)
+                return
+
+    def _drifted(self, target):
+        """Whether the entity's x/y/yaw left the target.
+
+        Height, roll and pitch are left to physics (the chassis settles on
+        its wheels).
+        """
+        actual = self._gz_pose
+        if actual is None:
+            return True
+        x, y, _z, yaw = target
+        if math.hypot(x - actual[0], y - actual[1]) > self.drift_tolerance:
+            return True
+        qx, qy, qz, qw = actual[3:]
+        actual_yaw = math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
+        return abs(math.remainder(yaw - actual_yaw, 2 * math.pi)) > self.drift_angle_tolerance
 
     def _gz_set_pose(self, x, y, z, yaw):
         qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, yaw)

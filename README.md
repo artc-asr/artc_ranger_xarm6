@@ -94,6 +94,13 @@ ros2 launch ranger_xarm6_description ranger_xarm6.launch.py sim:=true
 ros2 launch ranger_xarm6_description ranger_xarm6.launch.py sim:=false
 ```
 
+Then, optionally, a controller on top (MoveIt 2 planning for base + arm, sequential or whole-body; see [`ranger_xarm6_manipulation`](ranger_xarm6_manipulation/README.md)):
+
+```bash
+ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
+ros2 launch ranger_xarm6_manipulation control.launch.py controller:=moveit_sequential   # or moveit_whole_body; --show-args lists them
+```
+
 Either way the arm is exposed as an `arm_velocity_controller` joint group, so downstream control code drives it identically in sim or on hardware. Base drive on real hardware isn't wired up yet (`ranger_bringup`/`ranger_ros2`, vendored, untested); in simulation it's driven by `ranger_xarm6_description/scripts/base_pose_publisher.py`, a kinematic (not physics-based) stand-in that integrates `cmd_vel` and teleports the Gazebo entity, since Ranger's wheels have no `ros2_control` command interface.
 
 ## Using this repo from another workspace
