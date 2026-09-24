@@ -1,0 +1,89 @@
+<?xml version="1.0"?>
+<!-- Semantic description of the Ranger Mini 3.0 + xArm6 mobile manipulator
+     for MoveIt. 'prefix' must match the URDF's (ranger_xarm6.launch.py uses
+     "<robot_id>_", e.g. "robot_a_"). -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ranger_xarm6">
+  <xacro:arg name="prefix" default="" />
+  <xacro:property name="prefix" value="$(arg prefix)" />
+
+  <!-- The mobile base as a planar joint (x, y, yaw) between odom and
+       base_link. MoveIt reads its value from TF (odom -> base_link, owned by
+       base_pose_publisher.py in sim, the Ranger driver on hardware), so the
+       planning scene always has the robot where it really is. Planned only
+       by the 'base' group; 'arm' plans with the base held still. -->
+  <virtual_joint name="${prefix}base_virtual_joint" type="planar"
+    parent_frame="${prefix}odom" child_link="${prefix}base_link" />
+
+  <group name="arm">
+    <chain base_link="${prefix}link_base" tip_link="${prefix}link_tcp" />
+  </group>
+  <group name="gripper">
+    <link name="${prefix}xarm_gripper_base_link" />
+    <link name="${prefix}left_outer_knuckle" />
+    <link name="${prefix}left_finger" />
+    <link name="${prefix}left_inner_knuckle" />
+    <link name="${prefix}right_inner_knuckle" />
+    <link name="${prefix}right_outer_knuckle" />
+    <link name="${prefix}right_finger" />
+    <joint name="${prefix}drive_joint" />
+  </group>
+  <group name="base">
+    <joint name="${prefix}base_virtual_joint" />
+  </group>
+
+  <!-- home: xArm's own zero pose (gripper hangs down ~0.25m past the rear
+       bumper). stow: pose held while the base drives (sequential mode).
+       Picked by grid search over the collision meshes, checked against
+       move_group's own self-collision (valid with +-0.05 rad margin on
+       every joint): the lowest pose that stays behind the sensor tower
+       and within ~6cm of the rear bumper. Arm+gripper span x
+       -0.307..-0.060, |y| <= 0.116, top 0.97m above base_link. The arm
+       can't fold lower without the gripper stack hitting it; lower poses
+       trade height for overhang (0.65m tall at 21cm overhang:
+       joint1..6 = 0 -0.65 0 3.14 2.9 0). -->
+  <group_state name="home" group="arm">
+    <joint name="${prefix}joint1" value="0" />
+    <joint name="${prefix}joint2" value="0" />
+    <joint name="${prefix}joint3" value="0" />
+    <joint name="${prefix}joint4" value="0" />
+    <joint name="${prefix}joint5" value="0" />
+    <joint name="${prefix}joint6" value="0" />
+  </group_state>
+  <group_state name="stow" group="arm">
+    <joint name="${prefix}joint1" value="0" />
+    <joint name="${prefix}joint2" value="-0.35" />
+    <joint name="${prefix}joint3" value="-2.7" />
+    <joint name="${prefix}joint4" value="0" />
+    <joint name="${prefix}joint5" value="2.9" />
+    <joint name="${prefix}joint6" value="0" />
+  </group_state>
+  <group_state name="open" group="gripper">
+    <joint name="${prefix}drive_joint" value="0" />
+  </group_state>
+  <group_state name="close" group="gripper">
+    <joint name="${prefix}drive_joint" value="0.85" />
+  </group_state>
+
+  <end_effector name="gripper" parent_link="${prefix}link_tcp" group="gripper" parent_group="arm" />
+
+  <!-- Never planned: the Ranger's wheel/steering joints (published in
+       /joint_states, frozen for planning) and the gripper's mimic joints
+       (follow drive_joint). Keep the wheel list in sync with
+       scripts/generate_collision_matrix.py's PASSIVE_JOINTS. -->
+  <passive_joint name="${prefix}fr_steering_joint" />
+  <passive_joint name="${prefix}fr_wheel" />
+  <passive_joint name="${prefix}fl_steering_joint" />
+  <passive_joint name="${prefix}fl_wheel" />
+  <passive_joint name="${prefix}rl_steering_joint" />
+  <passive_joint name="${prefix}rl_wheel" />
+  <passive_joint name="${prefix}rr_steering_joint" />
+  <passive_joint name="${prefix}rr_wheel" />
+  <passive_joint name="${prefix}left_finger_joint" />
+  <passive_joint name="${prefix}left_inner_knuckle_joint" />
+  <passive_joint name="${prefix}right_inner_knuckle_joint" />
+  <passive_joint name="${prefix}right_outer_knuckle_joint" />
+  <passive_joint name="${prefix}right_finger_joint" />
+
+  <xacro:include filename="_disable_collisions.srdf.xacro" />
+  <xacro:ranger_xarm6_disable_collisions prefix="${prefix}" />
+</robot>

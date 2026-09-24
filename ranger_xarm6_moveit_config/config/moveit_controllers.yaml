@@ -1,0 +1,21 @@
+# Where move_group sends each part of a trajectory. Joint names unprefixed
+# (prefixed at launch). Action names resolve inside move_group's namespace,
+# e.g. /robot_a/arm_trajectory_controller/follow_joint_trajectory.
+# The gripper isn't executed through MoveIt yet: it stays on
+# gripper_position_controller (Float64MultiArray, drive_joint 0 = open,
+# 0.85 = closed).
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - arm_trajectory_controller
+  arm_trajectory_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints: [joint1, joint2, joint3, joint4, joint5, joint6]
+
+trajectory_execution:
+  allowed_execution_duration_scaling: 1.5
+  allowed_goal_duration_margin: 1.0
+  allowed_start_tolerance: 0.02

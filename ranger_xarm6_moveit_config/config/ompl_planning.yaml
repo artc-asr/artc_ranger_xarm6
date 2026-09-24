@@ -1,0 +1,40 @@
+# OMPL planner configs per planning group (loaded under the 'ompl' planning
+# pipeline namespace by launch/move_group.launch.py).
+planner_configs:
+  RRTConnectkConfigDefault:
+    type: geometric::RRTConnect
+    range: 0.0
+  RRTstarkConfigDefault:
+    type: geometric::RRTstar
+    range: 0.0
+    goal_bias: 0.05
+    delay_collision_checking: 1
+  PRMstarkConfigDefault:
+    type: geometric::PRMstar
+  BiTRRTkConfigDefault:
+    type: geometric::BiTRRT
+    range: 0.0
+    temp_change_factor: 0.1
+    init_temperature: 100
+    frontier_threshold: 0.0
+    frontier_node_ratio: 0.1
+    cost_threshold: 1e300
+
+arm:
+  default_planner_config: RRTConnectkConfigDefault
+  planner_configs: [RRTConnectkConfigDefault, RRTstarkConfigDefault, PRMstarkConfigDefault, BiTRRTkConfigDefault]
+  # Collision-check spacing along the path, as a fraction of the joint
+  # space's extent (large here: joint1/4/6 turn +-2pi). 0.005 let a path
+  # through the Livox slip between checks.
+  longest_valid_segment_fraction: 0.002
+
+gripper:
+  default_planner_config: RRTConnectkConfigDefault
+  planner_configs: [RRTConnectkConfigDefault]
+
+# Base-only planning (planar x/y/yaw): needs workspace bounds in the request.
+# Sequential mode drives the base directly through base_trajectory_server.py
+# instead; this is here for RViz experiments and the future whole-body mode.
+base:
+  default_planner_config: RRTConnectkConfigDefault
+  planner_configs: [RRTConnectkConfigDefault, RRTstarkConfigDefault]

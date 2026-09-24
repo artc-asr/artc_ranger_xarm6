@@ -1,0 +1,10 @@
+# Extra <disable_collisions> pairs for scripts/generate_collision_matrix.py,
+# beyond the Adjacent/Rigid pairs it derives from the URDF itself. Only add
+# pairs that scripts/sample_self_collisions.py reports colliding in EVERY
+# sampled state (touching/overlapping meshes, not real collisions), after
+# checking them by hand. Link names unprefixed.
+disable:
+  # G2 gripper parallel linkage: finger and inner knuckle touch by design
+  # (1.00 of 300 samples; xarm_moveit_config's SRDF disables the same pairs).
+  - {links: [left_finger, left_inner_knuckle], reason: Default}
+  - {links: [right_finger, right_inner_knuckle], reason: Default}

@@ -1,0 +1,34 @@
+# Move the mobile manipulator to a goal, base and/or arm.
+#
+# SEQUENTIAL: arm to transit_state -> base to base_goal -> arm to its goal.
+#   Each stage runs only if needed (move_base / move_arm).
+# WHOLE_BODY: base and arm planned together (not implemented yet; rejected).
+uint8 SEQUENTIAL=0
+uint8 WHOLE_BODY=1
+uint8 mode
+
+# Base target in the odom frame (x [m], y [m], theta [rad]).
+bool move_base
+geometry_msgs/Pose2D base_goal
+
+# SRDF named state of group 'arm' held while the base moves.
+# Empty = "stow".
+string transit_state
+
+# Arm target, applied after the base arrives. arm_named_goal (an SRDF
+# named state) wins if non-empty; otherwise arm_pose_goal is the target
+# pose of link_tcp. Its frame_id is resolved when the arm is planned, so
+# base_link-relative goals mean "relative to where the base ended up".
+bool move_arm
+string arm_named_goal
+geometry_msgs/PoseStamped arm_pose_goal
+
+# (0, 1]. 0 = MoveIt's defaults from joint_limits.yaml.
+float64 velocity_scaling
+---
+bool success
+string message
+---
+# transit | base | arm
+string stage
+string status

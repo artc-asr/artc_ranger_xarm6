@@ -1,0 +1,19 @@
+# base_trajectory_server.py tuning. Conservative defaults for driving with
+# the arm stowed; the Ranger Mini 3 driver itself allows 1.5 m/s and
+# 4.8 rad/s (westonrobot_ranger_ros2 RangerMiniV2Params, used for V3).
+# odom_frame/base_frame are set by launch/manipulation.launch.py.
+/**:
+  ros__parameters:
+    max_linear_speed: 0.3        # m/s
+    max_angular_speed: 0.5       # rad/s
+    linear_acceleration: 0.3     # m/s^2
+    angular_acceleration: 0.8    # rad/s^2
+    kp_linear: 1.5               # 1/s
+    kp_angular: 2.0              # 1/s
+    xy_tolerance: 0.02           # m
+    yaw_tolerance: 0.02          # rad
+    straight_tolerance: 0.0349   # rad (2 deg): closer to straight -> linear.y = 0 exactly
+    mode_switch_pause: 0.5       # s stopped between translate and rotate (wheel re-steer)
+    max_passes: 3
+    control_rate: 20.0           # Hz
+    timeout_margin: 3.0          # x nominal segment duration
