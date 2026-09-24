@@ -82,6 +82,12 @@ def _prefix_controller_joints(yaml_path, prefix, robot_id, use_sim_time):
             joints = (cfg or {}).get('ros__parameters', {}).get('joints')
             if joints:
                 cfg['ros__parameters']['joints'] = [f'{prefix}{j}' for j in joints]
+                # Per-joint entries (JointTrajectoryController's
+                # constraints.<joint>.goal) are keyed by joint name too.
+                constraints = cfg['ros__parameters'].get('constraints', {})
+                for j in joints:
+                    if j in constraints:
+                        constraints[f'{prefix}{j}'] = constraints.pop(j)
     if use_sim_time:
         data['controller_manager']['ros__parameters']['use_sim_time'] = True
     if robot_id:
@@ -878,7 +884,12 @@ def generate_launch_description():
         DeclareLaunchArgument('can_device', default_value='can0', description='Ranger Mini 3 CAN interface (real hardware only)'),
         DeclareLaunchArgument('x', default_value='0', description='Spawn pose (sim only)'),
         DeclareLaunchArgument('y', default_value='0', description='Spawn pose (sim only)'),
-        DeclareLaunchArgument('z', default_value='0.15', description='Spawn pose (sim only)'),
+        # 0.315: base_link's height above the floor with the wheels on the
+        # ground (ranger_mini_v3's wheel collision cylinders bottom out
+        # 0.315m below base_link). base_pose_publisher.py holds the entity
+        # at this z every tick, so anything lower sinks the robot into the
+        # floor (0.15, the old default, sank it ~16.5cm).
+        DeclareLaunchArgument('z', default_value='0.315', description='Spawn pose (sim only); base_link height above the floor'),
         DeclareLaunchArgument('yaw', default_value='0', description='Spawn pose (sim only)'),
         DeclareLaunchArgument('run_rviz', default_value='true', description='sim and real hardware: launch RViz, the digital-twin viewer (RobotModel + TF + the two fixed cameras\' point clouds/images) either way'),
         DeclareLaunchArgument('enable_fixed_cameras', default_value='true', description='Bridge (sim) / launch realsense2_camera drivers (real) for the two frame-mounted D435i cameras (fixed_cam1/fixed_cam2). Wrist camera (Gemini 2, eventually) not covered by this flag.'),
