@@ -18,9 +18,12 @@ Mobile manipulation for the Ranger Mini 3.0 + xArm6: one action,
 
 ## Run (sim)
 
-Terminal 1, the robot (its own RViz off, MoveIt brings one):
+Terminal 1, the robot (its own RViz off, MoveIt brings one), either in
+the default contact-wall world or in the lab room at its home spot:
 
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false
+    ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false \
+      world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
 
 Terminal 2, MoveIt + base executor + coordinator + RViz (MotionPlanning):
 

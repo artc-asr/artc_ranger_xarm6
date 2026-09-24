@@ -9,6 +9,8 @@ regardless of which mode is active:
 
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py                    # full physics, RViz for viz, gz headless (default)
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py gz_gui:=true       # also pop the Gazebo GUI window
+    ros2 launch ranger_xarm6_description ranger_xarm6.launch.py world:=artc_lab.world \
+        x:=0.94 y:=4.35 yaw:=-1.5708                                               # lab room, robot at its home spot
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py gazebo:=false      # skip physics entirely -- structural/visual check only
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py sim:=false \\
         robot_ip:=192.168.1.231 can_device:=can0                                   # real hardware
@@ -38,6 +40,7 @@ sim:=false -> real xArm6 over the network (uf_robot_hardware/UFRobotSystemHardwa
 """
 import os
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
@@ -278,6 +281,14 @@ def launch_setup(context, *args, **kwargs):
     run_rviz = LaunchConfiguration('run_rviz').perform(context).lower() in ('true', '1', 'yes')
     robot_id = LaunchConfiguration('robot_id').perform(context)
     robot_ip = LaunchConfiguration('robot_ip').perform(context)
+    # Bare file name -> this package's worlds/ dir; anything with a '/' is
+    # used as a path as-is.
+    world = LaunchConfiguration('world').perform(context)
+    world_path = world if os.sep in world else os.path.join(
+        get_package_share_directory('ranger_xarm6_description'), 'worlds', world)
+    # base_pose_publisher.py teleports the entity through
+    # /world/<name>/set_pose, so it needs the SDF's own world name.
+    gz_world_name = ET.parse(world_path).getroot().find('world').get('name')
     can_device = LaunchConfiguration('can_device').perform(context)
     prefix = f'{robot_id}_' if robot_id else ''
 
@@ -425,6 +436,13 @@ def launch_setup(context, *args, **kwargs):
                 # node's gz-transport teleport calls (see
                 # base_pose_publisher.py) hit the right entity.
                 'gz_entity_name': robot_id or 'ranger_xarm6',
+                'gz_world': gz_world_name,
+                # x clamp keeping the kinematic base out of tested_world's
+                # contact wall (see max_x in base_pose_publisher.py);
+                # meaningless elsewhere. Nothing stops the base driving
+                # into other worlds' furniture: it's a teleport, not
+                # physics.
+                'max_x': 2.6 if os.path.basename(world_path) == 'tested_world.world' else 1e6,
                 'use_sim_time': gazebo,
             }],
             output='screen',
@@ -460,9 +478,6 @@ def launch_setup(context, *args, **kwargs):
         startup_actions = []
 
         if launch_gazebo:
-            world_path = PathJoinSubstitution(
-                [FindPackageShare('ranger_xarm6_description'), 'worlds', 'tested_world.world']
-            )
             # Server always (headless simulation needs this); GUI window
             # only when gz_gui:=true. Two separate gz_sim processes, same
             # pattern robotnik_gazebo_ignition's spawn_world.launch.py used
@@ -879,6 +894,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gazebo', default_value='true', description='sim only: true (default) = full Gazebo Harmonic physics (headless -- see gz_gui), false = RViz-only structural view (robot_state_publisher + joint_state_publisher + static TF, no controller_manager)'),
         DeclareLaunchArgument('gz_gui', default_value='false', description="sim+gazebo only: also launch Gazebo's own GUI window (default false -- RViz already visualizes)"),
         DeclareLaunchArgument('launch_gazebo', default_value='true', description='sim+gazebo only: false when an external launcher (e.g. wbcc_bringup/simulation.launch.py) already started Gazebo + its /clock bridge'),
+        DeclareLaunchArgument('world', default_value='tested_world.world', description="sim+gazebo only: world file, a name in this package's worlds/ dir (tested_world.world: contact wall; artc_lab.world: pick-and-place lab room, spawn at x:=0.94 y:=4.35 yaw:=-1.5708) or a path"),
         DeclareLaunchArgument('robot_id', default_value='robot_a', description='ROS namespace + joint/frame prefix'),
         DeclareLaunchArgument('robot_ip', default_value='192.168.1.231', description='xArm6 IP (real hardware only; from ARTC handover note, confirm against your unit)'),
         DeclareLaunchArgument('can_device', default_value='can0', description='Ranger Mini 3 CAN interface (real hardware only)'),
