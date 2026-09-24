@@ -364,6 +364,17 @@ def launch_setup(context, *args, **kwargs):
             arguments=['arm_velocity_controller'],
             parameters=[{'use_sim_time': sim}],
         ),
+        # MoveIt's execution target; loaded inactive so wbc.py's
+        # arm_velocity_controller keeps the arm by default (only one of the
+        # two may be active at once, see config/ros2_controllers.yaml).
+        Node(
+            package='controller_manager',
+            executable='spawner',
+            namespace=robot_id,
+            output='screen',
+            arguments=['arm_trajectory_controller', '--inactive'],
+            parameters=[{'use_sim_time': sim}],
+        ),
         # G2 gripper's drive_joint (config/ros2_controllers.yaml); separate
         # ros2_control resource ('XArmGripperSystem', see
         # xarm_gripper.ros2_control.xacro) from the arm's, so its own

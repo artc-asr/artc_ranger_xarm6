@@ -1,9 +1,16 @@
 # ros2_control controller set for the xArm6 arm on Ranger Mini 3.0.
 #
-# Deliberately does NOT define a joint-trajectory controller: wbcc_controller
-# (wbc.py) drives the arm as a velocity-controlled joint group, publishing
-# Float64MultiArray to '<ns>/arm_velocity_controller/commands', exactly like
-# the Theron/Kairos UR5e setups already in this workspace. Joint names below
+# Two arm controllers over the same six joints, only ever ONE active at a
+# time (they claim different command interfaces, velocity vs position, but
+# the hardware can only run each joint in one mode):
+#   - arm_velocity_controller (active by default): wbcc_controller (wbc.py)
+#     drives the arm as a velocity-controlled joint group, publishing
+#     Float64MultiArray to '<ns>/arm_velocity_controller/commands', exactly
+#     like the Theron/Kairos UR5e setups already in this workspace.
+#   - arm_trajectory_controller (loaded inactive): MoveIt's execution target
+#     (FollowJointTrajectory). ranger_xarm6_manipulation's coordinator
+#     switches to it before running MoveIt plans.
+# Joint names below
 # are unprefixed ('joint1'..'joint6') -- ranger_xarm6.launch.py prefixes them
 # with the robot_id at launch time (see _prefix_controller_joints there) so
 # they match wbc.py's '{ns}_joint1'..'{ns}_joint6' expectation. The two
@@ -24,6 +31,9 @@ controller_manager:
     arm_velocity_controller:
       type: velocity_controllers/JointGroupVelocityController
 
+    arm_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
     gripper_position_controller:
       type: position_controllers/JointGroupPositionController
 
@@ -37,6 +47,27 @@ arm_velocity_controller:
       - joint5
       - joint6
     interface_name: velocity
+
+arm_trajectory_controller:
+  ros__parameters:
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+      - joint5
+      - joint6
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    state_publish_rate: 50.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    constraints:
+      stopped_velocity_tolerance: 0.01
+      goal_time: 0.5
 
 # Drives the G2 gripper's single actuated joint ('drive_joint'); the other
 # five finger/knuckle joints are Gazebo mimic joints (see
