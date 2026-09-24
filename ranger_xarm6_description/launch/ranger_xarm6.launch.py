@@ -485,11 +485,15 @@ def launch_setup(context, *args, **kwargs):
         # publishing entirely, unlike every other sensor type in this
         # file), so it still reports the usual unresolvable auto-generated
         # scoped path as header.frame_id; this republisher fixes it up to
-        # link6, the sensor's own actual physics body (see
-        # force_torque_sensor's own comment in ranger_xarm6.urdf.xacro).
+        # ft_sensor_frame, shifting the torque from joint6's origin to
+        # that frame's (see force_torque_sensor's and ft_sensor_frame's
+        # own comments in ranger_xarm6.urdf.xacro).
         ft_raw_topic = f'/{robot_id}/force_torque_raw' if robot_id else '/force_torque_raw'
         ft_ros_topic = f'/{robot_id}/force_torque' if robot_id else '/force_torque'
-        ft_frame_id = f'{prefix}link6'
+        ft_frame_id = f'{prefix}ft_sensor_frame'
+        # joint6 -> ft_sensor_frame, along link6's +Z. Must match
+        # ft_sensor_frame_joint's origin in ranger_xarm6.urdf.xacro.
+        ft_sensor_frame_z = 0.02825
         ft_bridge = Node(
             package='ros_gz_bridge',
             executable='parameter_bridge',
@@ -500,7 +504,7 @@ def launch_setup(context, *args, **kwargs):
         ft_frame_fixup = Node(
             package='ranger_xarm6_description',
             executable='fix_wrench_frame_id.py',
-            arguments=[ft_raw_topic, ft_ros_topic, ft_frame_id],
+            arguments=[ft_raw_topic, ft_ros_topic, ft_frame_id, str(ft_sensor_frame_z)],
             output='screen',
         )
         startup_actions.append(ft_bridge)

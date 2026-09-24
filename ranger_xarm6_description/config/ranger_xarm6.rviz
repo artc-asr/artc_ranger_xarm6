@@ -307,6 +307,32 @@ Visualization Manager:
       Invert Rainbow: false
       Value: false
 
+    # F/T sensor wrench (see force_torque_sensor in ranger_xarm6.urdf.xacro).
+    # Sim: measured at joint6, shifted to ft_sensor_frame (centre of the
+    # sensor body) by scripts/fix_wrench_frame_id.py. Real hardware: xarm_api's topic
+    # carries a non-TF frame_id ("uf_ft_sensor_ext_data"), so this display
+    # won't resolve there until that's republished too.
+    # Arrow scales sized for the at-rest reading (~13N gravity load,
+    # ~0.05Nm torque): 0.01 m/N and 0.5 m/Nm.
+    - Class: rviz_default_plugins/Wrench
+      Enabled: false
+      Name: F/T Sensor (wrench)
+      Topic:
+        Value: force_torque
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Force Color: 204; 51; 51
+      Torque Color: 204; 204; 51
+      Alpha: 1
+      Force Arrow Scale: 0.01
+      Torque Arrow Scale: 0.5
+      Arrow Width: 0.3
+      History Length: 1
+      Accept NaN Values: false
+      Value: false
+
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

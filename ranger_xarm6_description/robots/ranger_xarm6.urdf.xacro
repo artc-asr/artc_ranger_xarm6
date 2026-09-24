@@ -102,10 +102,10 @@
        add_realsense_d435i="false": the wrist RealSense D435i (mesh,
        camera_depth/color/left_ir/right_ir frames, realsense_gz sensor
        plugin) is now built by hand below instead of by xarm_device_macro
-       itself, so an explicit F/T sensor accessory (a cylinder, per
-       instruction: no real F/T sensor mesh exists anywhere UFACTORY
-       publishes it, end_tool_1300.stl above is link6's own tool-flange
-       mesh, not a separate sensor body) can be inserted physically
+       itself, so an explicit F/T sensor accessory (the AI1302 sensor
+       mesh, converted from its vendor STEP: end_tool_1300.stl above is
+       link6's own tool-flange mesh, not a separate sensor body) can be
+       inserted physically
        between link6's flange and the camera mount. xarm_device_macro.
        xacro's own joint_eef (link6 -> link_eef) hardcodes a 0 0 0 origin
        with no override parameter, so link_eef itself can't be pushed
@@ -114,7 +114,7 @@
        and everything add_realsense_d435i="true" used to build
        automatically (camera mesh, camera_link and its children,
        realsense_gz's Sensors-system plugin registration) is recreated
-       by hand below, parented past the new F/T sensor cylinder instead
+       by hand below, parented past the new F/T sensor accessory instead
        of directly at link_eef.
        Intended physical stack, per instruction: link6 (F/T-sensor-
        equipped flange mesh) -> F/T sensor accessory (new, below) ->
@@ -152,26 +152,29 @@
        to this scope, unlike properties declared scope="parent". -->
   <xacro:include filename="$(find xarm_description)/urdf/common/common.link.xacro" />
 
-  <!-- F/T sensor accessory cylinder: radius=36.5mm/length=55mm
-       (hand-tuned from the original diameter=126mm/height=95mm
-       placeholder; the new radius, 36.5mm, exactly matches
-       end_tool_1300.stl's own measured flange-face radius: parsed
-       directly from its binary STL vertices, front face at local Z=0,
-       every edge vertex sits at exactly r=36.500mm: so the cylinder
-       now sits flush with the real flange's own outer edge instead of
-       overhanging it). Height still along the flange direction (local
-       Z, matching every other wrist-stack offset in this file: the
-       gripper's own "0 0 0.003" below, d435i_urdf's own
-       camera_link_joint, etc.).
-       Placeholder mass/inertia (solid-cylinder formula), scaled down
-       from the original 0.9kg by volume ratio (new/old = ~0.194) to
-       keep the same implied density, since no real F/T sensor datasheet
-       mass is available either way (same treatment as the HiPNUC IMU's
-       own placeholder inertial above). -->
+  <!-- F/T sensor accessory: the real AI1302 6-axis F/T sensor assembly
+       (Robotous RFT60-HA01 plus its xArm 1200/1300 universal adapter and
+       tool-side mounting plate), meshed from the vendor STEP
+       step/ft_sensor_AI1302_20240411.STEP by step/convert_ft_sensor.py
+       (OpenCascade via OCP, not FreeCAD). Replaces the old placeholder
+       cylinder. The mesh is baked into this link's frame: origin is the
+       adapter's seating face on the sensor axis (flush with link6's own
+       flange face, i.e. link_eef), +Z out toward the tool, total height
+       58.6mm to the tool-side face. Yawed so the adapter's single
+       locating dowel pin (the 4mm stub below z=0 in the visual mesh)
+       sits in end_tool_1300.stl's own dowel hole at (0, -25mm); the
+       cable connector then points along +Y.
+       Collision is the convex hull of the part above z=0 only (so it
+       doesn't reach into link6's flange via the dowel pin).
+       Mass is the UFACTORY F/T sensor manual's own figure (V2.2.0 spec
+       table: 445g); COM/inertia computed from the STEP's solid geometry,
+       scaled to that mass (uniform density assumed).
+       The sensing point is a separate child frame, ft_sensor_frame,
+       below. -->
   <link name="$(arg prefix)ft_sensor_link">
     <visual>
       <geometry>
-        <cylinder radius="0.0365" length="0.055" />
+        <mesh filename="package://ranger_xarm6_description/meshes/ft_sensor_ai1302.stl" />
       </geometry>
       <material name="ft_sensor_grey">
         <color rgba="0.55 0.55 0.55 1" />
@@ -179,23 +182,44 @@
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.0365" length="0.055" />
+        <mesh filename="package://ranger_xarm6_description/meshes/ft_sensor_ai1302_collision.stl" />
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.175" />
-      <inertia ixx="0.0001024" ixy="0" ixz="0" iyy="0.0001024" iyz="0" izz="0.0001166" />
+      <origin xyz="0.00005 -0.00017 0.0259" rpy="0 0 0" />
+      <mass value="0.445" />
+      <inertia ixx="0.0002724" ixy="-0.0000010" ixz="-0.0000001" iyy="0.0002750" iyz="-0.0000030" izz="0.0003052" />
     </inertial>
   </link>
   <joint name="$(arg prefix)ft_sensor_joint" type="fixed">
     <parent link="$(arg prefix)link_eef" />
     <child link="$(arg prefix)ft_sensor_link" />
-    <origin xyz="0 0 0.0275" rpy="0 0 0" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+
+  <!-- F/T sensor measurement frame: centre of the RFT60 sensing body
+       (spans 19mm-37.5mm above the seating face in the STEP, so
+       28.25mm), where its strain-gauge element sits. Neither the
+       UFACTORY manual (V2.2.0) nor xarm_api documents the real
+       sensor's reference point, so this is the physical-centre
+       assumption: a few mm error here only shifts torque by
+       (error x lateral force), force is unaffected. Axes parallel to
+       link6/link_eef (+Z out toward the tool).
+       ranger_xarm6.launch.py's ft_sensor_frame_z hardcodes this same
+       0.02825 (link6 -> link_eef -> ft_sensor_link are all zero
+       offsets) for fix_wrench_frame_id.py, which shifts the sim wrench
+       (measured at joint6, see force_torque_sensor below) to this
+       frame: keep the two in sync. -->
+  <link name="$(arg prefix)ft_sensor_frame" />
+  <joint name="$(arg prefix)ft_sensor_frame_joint" type="fixed">
+    <parent link="$(arg prefix)ft_sensor_link" />
+    <child link="$(arg prefix)ft_sensor_frame" />
+    <origin xyz="0 0 0.02825" rpy="0 0 0" />
   </joint>
 
   <!-- Camera mount: exactly d435i_urdf's own link_eef body (same mesh,
        same visual/collision), just under a new name and parented past
-       the F/T sensor cylinder instead of directly at link6's flange.
+       the F/T sensor accessory instead of directly at link6's flange.
        xarm_gripper_macro attaches here now (past this mesh's own 30mm
        depth, matching the pre-existing "0 0 0.003" offset unchanged,
        since that offset is relative to the mesh's own geometry, not to
@@ -214,7 +238,7 @@
   <joint name="$(arg prefix)camera_mount_joint" type="fixed">
     <parent link="$(arg prefix)ft_sensor_link" />
     <child link="$(arg prefix)camera_mount_link" />
-    <origin xyz="0 0 0.0275" rpy="0 0 0" />
+    <origin xyz="0 0 0.0586" rpy="0 0 0" />
   </joint>
 
   <!-- Exact same frames d435i_urdf's own macro (xarm_description/urdf/
@@ -597,7 +621,7 @@
          piggybacked on xarm_device's own add_realsense_d435i="true" call
          (its realsense_gz macro registers the exact same plugin as a
          side effect); now that add_realsense_d435i is "false" (see the
-         F/T sensor cylinder/camera_mount_link comment above), it has to
+         F/T sensor/camera_mount_link comment above), it has to
          be registered explicitly instead, exactly matching xarm's own
          realsense.gazebo.xacro plugin block (filename/name/render_engine
          all identical) so nothing else in this file needs to change. -->
@@ -954,7 +978,7 @@
        fixed_cam1/fixed_cam2 (correct optical_frame_id, own topics, bridged
        + real driver), applied to the wrist's camera_link/camera_depth_
        frame/camera_color_frame/camera_left_ir_frame/camera_right_ir_frame
-       chain (hand-built above, past the F/T sensor cylinder/
+       chain (hand-built above, past the F/T sensor/
        camera_mount_link, same names as xarm_device's own add_realsense_
        d435i="true" used to create): "lens distance similar, thickness
        differs" per instruction, i.e. treat it as a D435i-shaped stand-in
@@ -963,7 +987,7 @@
        No "xarm's own broken sensor tags running unused alongside"
        tradeoff to make any more (an earlier version of this comment
        described one): add_realsense_d435i is "false" now (see the F/T
-       sensor cylinder's own comment above), so xarm_ros2's own realsense.
+       sensor accessory's own comment above), so xarm_ros2's own realsense.
        gazebo.xacro sensor tags (the ones with the missing-optical_
        frame_id bug) are never created in the first place, not just left
        unused: this macro's own sensor set below is the only one. Still
@@ -1279,8 +1303,8 @@
        measurement at joint6 (the arm's last revolute joint, upstream of
        link_eef/ft_sensor_link/camera_mount_link).
        Tried moving this to ft_sensor_joint first, to report about the
-       F/T sensor cylinder's own centre (that joint's origin exactly
-       coincides with ft_sensor_link's own origin) instead: verified live
+       F/T sensor's own frame (that joint's origin exactly coincides
+       with ft_sensor_link's own origin) instead: verified live
        that gz-sim's force_torque sensor does NOT work on a fixed joint
        (unlike a revolute one): the gz topic gets advertised but never
        actually publishes a single message, with no error either (an
@@ -1293,15 +1317,20 @@
        Reverted to joint6, the nearest ACTUAL (non-reduced) joint
        boundary: because of that same reduction, joint6's own reaction
        force already reflects the combined weight/load of everything
-       downstream (F/T sensor cylinder, camera, gripper, and any tool
+       downstream (F/T sensor, camera, gripper, and any tool
        contact force) as a single rigid assembly, so the FORCE component
        reported here is physically equivalent to measuring right at the
-       cylinder's centre; only the TORQUE component differs (resolved
-       about joint6's own origin, not the cylinder's, per the SDF
+       sensor itself; only the TORQUE component differs (resolved
+       about joint6's own origin, not the sensor's, per the SDF
        force_torque spec's own note that torque is always expressed
        about the joint's origin regardless of <frame> choice): correct
-       for real force-controlled tasks (net wrench felt at the wrist),
-       just not literally "the F/T sensor's own frame" for torque.
+       for real force-controlled tasks (net wrench felt at the wrist).
+       fix_wrench_frame_id.py (below) then shifts the torque to
+       ft_sensor_frame (tau - r x F, r = 28.25mm along link6's +Z), so
+       the published wrench is expressed at the sensor's own centre.
+       Remaining difference from a real sensor: joint6 also carries the
+       sensor's own arm-side half (a few N of constant offset, which a
+       real sensor's tare removes anyway).
        No <gz_frame_id> here, unlike every other sensor in this file
        (IMU, lidar, cameras' own <optical_frame_id>): tried it, verified
        live that it breaks this specific sensor type outright (adding a
@@ -1312,8 +1341,8 @@
        sensor's raw topic through fix_wrench_frame_id.py (new, same
        shape as the old, now-removed fix_imu_frame_id.py from before
        gz_frame_id was found to work for the IMU), which republishes with
-       header.frame_id corrected to link6, the sensor's own actual
-       physics body, so it resolves via TF like every other sensor here.
+       the torque shifted and header.frame_id set to ft_sensor_frame, so
+       it resolves via TF like every other sensor here.
        This is the sim-side sensor plugin, separate from model1300="true"
        above (which swaps in the F/T-sensor-equipped tool-flange MESH);
        the physical accessory's presence is confirmed by
