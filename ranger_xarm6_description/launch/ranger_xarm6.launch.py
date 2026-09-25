@@ -665,6 +665,25 @@ def launch_setup(context, *args, **kwargs):
                 output='screen',
             )
             startup_actions.append(livox_lidar_converter)
+            # The Mid-360's built-in IMU, published on the real driver's
+            # 'livox/imu' topic in the real driver's format (g, frame
+            # "livox_frame"), plus the teleported base's motion, which
+            # Gazebo's IMU can't sense (see gz_livox_imu.py).
+            livox_imu_gz_topic = f'/{prefix}livox/imu_raw'
+            livox_imu_ros_topic = f'/{robot_id}/livox/imu' if robot_id else f'/{prefix}livox/imu'
+            livox_imu_converter = Node(
+                package='ranger_xarm6_description',
+                executable='gz_livox_imu.py',
+                namespace=robot_id,
+                arguments=[livox_imu_gz_topic, livox_imu_ros_topic],
+                parameters=[{
+                    'use_sim_time': True,
+                    'base_frame': f'{prefix}base_link',
+                    'imu_frame': f'{prefix}livox_imu_frame',
+                }],
+                output='screen',
+            )
+            startup_actions.append(livox_imu_converter)
 
         spawn_entity_node = Node(
             package='ros_gz_sim',
