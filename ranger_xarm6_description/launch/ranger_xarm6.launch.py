@@ -280,6 +280,10 @@ def launch_setup(context, *args, **kwargs):
     # robot without building that bridge ourselves, and RViz+TF already
     # gives the same visualization for free).
     run_rviz = LaunchConfiguration('run_rviz').perform(context).lower() in ('true', '1', 'yes')
+    # odom -> base_link from the base itself (sim: base_pose_publisher.py's
+    # ground truth; real: the Ranger driver's wheel odometry). Off when
+    # something else owns it, e.g. ranger_xarm6_navigation's EKF.
+    publish_odom_tf = LaunchConfiguration('publish_odom_tf').perform(context).lower() in ('true', '1', 'yes')
     robot_id = LaunchConfiguration('robot_id').perform(context)
     robot_ip = LaunchConfiguration('robot_ip').perform(context)
     # Bare file name -> this package's worlds/ dir; anything with a '/' is
@@ -433,6 +437,7 @@ def launch_setup(context, *args, **kwargs):
                 'yaw': float(LaunchConfiguration('yaw').perform(context)),
                 'frame_id': f'{prefix}odom',
                 'child_frame_id': f'{prefix}base_link',
+                'publish_tf': publish_odom_tf,
                 # Must match spawn_entity_node's '-name' below so this
                 # node's gz-transport teleport calls (see
                 # base_pose_publisher.py) hit the right entity.
@@ -755,7 +760,7 @@ def launch_setup(context, *args, **kwargs):
             'port_name': can_device,
             'odom_frame': f'{prefix}odom',
             'base_frame': f'{prefix}base_link',
-            'publish_odom_tf': 'true',
+            'publish_odom_tf': str(publish_odom_tf).lower(),
         }.items(),
     )
 
@@ -970,6 +975,7 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_wrist_camera', default_value='true', description='Bridge (sim) / launch orbbec_camera (real, ros-humble-orbbec-camera) for the wrist-mounted Orbbec Gemini 2. Mesh stays the D435i+stand placeholder.'),
         DeclareLaunchArgument('wrist_camera_serial', default_value='', description='real hardware only: wrist camera Gemini 2 serial number (only needed if multiple Orbbec devices are ever present at once)'),
         DeclareLaunchArgument('enable_hipnuc_imu', default_value='true', description='Bridge the gz-sim IMU sensor for the HiPNUC HI14R3-232-000 (mounted on extras_link). Sim only for now -- real hardware driver not wired yet.'),
+        DeclareLaunchArgument('publish_odom_tf', default_value='true', description='Publish odom -> base_link from the base (sim: ground truth, real: Ranger wheel odometry). false when ranger_xarm6_navigation odometry.launch.py (EKF) owns it.'),
         DeclareLaunchArgument('enable_livox_lidar', default_value='true', description='Bridge the gz-sim gpu_lidar sensor (sim) or launch livox_ros_driver2 directly (sim:=false) for the Livox Mid-360 (mounted on extras_link).'),
         OpaqueFunction(function=launch_setup),
     ])

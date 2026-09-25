@@ -43,6 +43,10 @@ way on 'ground_truth/odom' (gz_livox_imu.py adds the base's motion to
 the simulated IMU from it: teleporting gives the links no velocity, so
 Gazebo's IMUs can't sense it).
 
+With publish_tf false (ranger_xarm6.launch.py publish_odom_tf:=false),
+the TF is left to something else, e.g. ranger_xarm6_navigation's EKF;
+everything else here runs the same.
+
 Also still the sole owner of odom->base_link for the "Initial Position"
 button's teleport (set_base_pose topic) -- see git history on this file
 for why a second TF publisher for the same edge is a race, and why
@@ -76,6 +80,10 @@ class BasePosePublisher(Node):
         self.declare_parameter('yaw', 0.0)
         self.declare_parameter('frame_id', 'odom')
         self.declare_parameter('child_frame_id', 'base_link')
+        # false when something else owns odom -> base_link (e.g. the
+        # EKF in ranger_xarm6_navigation); the base still moves the same,
+        # and ground_truth/odom still carries the true pose.
+        self.declare_parameter('publish_tf', True)
         # Gazebo teleport target -- must match how the entity was spawned
         # (see ranger_xarm6.launch.py's spawn_entity_node '-name' arg) and
         # which world it lives in (see tested_world.world's world name,
@@ -120,6 +128,7 @@ class BasePosePublisher(Node):
 
         self.frame_id = self.get_parameter('frame_id').value
         self.child_frame_id = self.get_parameter('child_frame_id').value
+        self.publish_tf = self.get_parameter('publish_tf').value
         self.gz_world = self.get_parameter('gz_world').value
         self.gz_entity_name = self.get_parameter('gz_entity_name').value
         self.cmd_vel_timeout = self.get_parameter('cmd_vel_timeout').value
@@ -288,6 +297,8 @@ class BasePosePublisher(Node):
         self.odom_pub.publish(self._odometry_msg(pose, (vx, vy, omega)))
 
     def _publish_tf(self):
+        if not self.publish_tf:
+            return
         with self.lock:
             x, y, z, yaw = self.x, self.y, self.z, self.yaw
         qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, yaw)

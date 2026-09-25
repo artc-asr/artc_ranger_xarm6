@@ -1,0 +1,59 @@
+# odom -> base_link: robot_localization's EKF over the Ranger's wheel
+# odometry and the Mid-360's built-in IMU, both through ekf_inputs.py.
+# Frames and use_sim_time are set by launch/odometry.launch.py.
+#
+# Fused (all velocities, so odom stays continuous; map -> odom is the
+# localizer's job):
+#   wheel odom: vx, vy, vyaw. Crab, spin and dual-Ackermann all show up
+#     here as body-frame velocities.
+#   IMU: vyaw (gyro z). Its variance is well below the wheels', so it
+#     carries the heading: wheel yaw rate is the least reliable wheel
+#     measurement on a swerve base (scrub while spinning). The
+#     accelerometer isn't fused: on a ground robot it's mostly vibration,
+#     and in 2D mode it can't help roll/pitch anyway.
+#
+# Node keys are /**/-prefixed: the nodes run in the robot's namespace,
+# and a bare key doesn't match /<robot_id>/ekf_filter_node.
+
+/**/ekf_inputs:
+  ros__parameters:
+    # Mid-360 IMU (ICM-40609): white noise ~7.9e-4 rad/s at 200 Hz; the
+    # variance also covers an uncalibrated turn-on bias of ~0.01 rad/s.
+    imu_angular_velocity_variance: 1.0e-4      # (rad/s)^2
+    imu_linear_acceleration_variance: 1.0e-2   # (m/s^2)^2, not fused
+    # Set true on hardware when the Mid-360 isn't PTP/gPTP-synced to the
+    # host (its stamps then aren't ROS time).
+    imu_restamp: false
+    wheel_linear_velocity_variance: 2.5e-3     # (m/s)^2, 0.05 m/s
+    wheel_angular_velocity_variance: 1.0e-2    # (rad/s)^2, 0.1 rad/s
+    # Gyro bias, estimated while the wheels read still (see ekf_inputs.py).
+    still_velocity: 1.0e-3                     # m/s and rad/s
+    still_settle_time: 0.5                     # s still before estimating
+    gyro_bias_time_constant: 2.0               # s
+
+/**/ekf_filter_node:
+  ros__parameters:
+    frequency: 50.0
+    sensor_timeout: 0.1
+    two_d_mode: true
+    publish_tf: true
+    # map_frame, odom_frame, base_link_frame and world_frame (= odom_frame)
+    # are set by launch.
+
+    odom0: ekf/wheel_odom
+    #             x      y      z      roll   pitch  yaw
+    #             vx     vy     vz     vroll  vpitch vyaw
+    #             ax     ay     az
+    odom0_config: [false, false, false, false, false, false,
+                   true,  true,  false, false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_queue_size: 10
+
+    imu0: ekf/livox_imu
+    imu0_config: [false, false, false, false, false, false,
+                  false, false, false, false, false, true,
+                  false, false, false]
+    imu0_differential: false
+    imu0_remove_gravitational_acceleration: true
+    imu0_queue_size: 50
