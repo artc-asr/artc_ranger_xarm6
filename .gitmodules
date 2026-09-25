@@ -17,3 +17,7 @@
 [submodule "livox_ros_driver2"]
 	path = livox_ros_driver2
 	url = https://github.com/Livox-SDK/livox_ros_driver2.git
+[submodule "FAST_LIO"]
+	path = FAST_LIO
+	url = https://github.com/hku-mars/FAST_LIO.git
+	branch = ROS2

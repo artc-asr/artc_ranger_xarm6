@@ -1,0 +1,64 @@
+# FAST-LIO2 (fast_lio, ROS2 branch) for the Ranger + xArm6's Livox Mid-360
+# and its built-in IMU. Topics, the map file and use_sim_time are set by
+# launch/mapping.launch.py.
+#
+# Input: 'livox/lidar_custom' (livox_cloud_to_custom, from the driver's /
+# sim's xfer_format 0 PointCloud2) and 'livox/imu' as the driver publishes
+# it (acceleration in g: FAST-LIO rescales by the mean norm at init).
+# FAST-LIO's frames are its own: 'camera_init' (the IMU's pose at start,
+# gravity-aligned) and 'body' (the IMU).
+/**:
+  ros__parameters:
+    feature_extract_enable: false
+    point_filter_num: 3          # keep every 3rd point
+    max_iteration: 3
+    # Indoor voxel sizes (the Mid-360 sample config's 0.5 is for open spaces).
+    filter_size_surf: 0.25
+    filter_size_map: 0.25
+    cube_side_length: 1000.0
+    runtime_pos_log_enable: false
+
+    common:
+      time_sync_en: false
+      time_offset_lidar_to_imu: 0.0
+
+    preprocess:
+      lidar_type: 1              # Livox CustomMsg
+      scan_line: 4               # Mid-360
+      # Points closer than this to the lidar are dropped: the arm. In its
+      # home and stow poses it's 0.27-0.67 m from the lidar (2.7% of a sim
+      # scan); nothing else comes that close (at 0.7 m the lidar only sees
+      # above 0.75 m). An arm reaching elsewhere while mapping gets mapped.
+      blind: 0.7
+      timestamp_unit: 3
+      scan_rate: 10
+
+    mapping:
+      acc_cov: 0.1
+      gyr_cov: 0.1
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+      fov_degree: 360.0
+      det_range: 40.0            # Mid-360's range
+      # IMU-lidar extrinsic: the lidar in the IMU's frame. The ICM-40609
+      # sits at (11.0, 23.29, -44.12) mm in point-cloud coordinates with the
+      # same axes (Livox Mid-360 User Manual), so fixed, not estimated.
+      extrinsic_est_en: false
+      extrinsic_T: [-0.011, -0.02329, 0.04412]
+      extrinsic_R: [1.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0]
+
+    publish:
+      path_en: true
+      effect_map_en: false
+      # The map is the undistorted full-resolution scans accumulated once a
+      # second (FAST-LIO's map timer); map_save writes it to map_file_path.
+      map_en: true
+      scan_publish_en: true
+      dense_publish_en: true
+      scan_bodyframe_pub_en: false
+
+    pcd_save:
+      pcd_save_en: true
+      interval: -1

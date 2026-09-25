@@ -25,10 +25,18 @@ spherical-to-Cartesian (X-forward/Y-left/Z-up, gz-sim's own lidar
 convention), and republishes as a proper sensor_msgs/PointCloud2.
 frame_id comes straight from the message's own 'frame' field (populated
 by the sensor tag's <gz_frame_id>, same mechanism verified working for
-the IMU); the ROS-side stamp uses this node's own sim-time-aware clock
-(use_sim_time, set in ranger_xarm6.launch.py), same convention
-base_pose_publisher.py already uses, rather than parsing the gz message's
-own embedded timestamp.
+the IMU).
+
+The cloud has livox_ros_driver2's own PointCloud2 layout (xfer_format 0,
+LivoxPointXyzrtlt, packed, 26 bytes): x y z intensity (float32), tag,
+line (uint8), timestamp (float64, the point's absolute time in ns), so
+anything reading it works the same on hardware. line is the channel
+index mod 4 (the Mid-360 has 4 lines); tag 0. gz-sim renders a whole
+scan at one instant, so every point gets the scan's time, and
+header.stamp is that time too (the real driver stamps the first point's
+time): the gz message's own sim-time stamp, i.e. when it was captured.
+The sim therefore has no motion distortion within a scan, unlike the
+real sensor.
 """
 import sys
 
@@ -36,11 +44,24 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
-from sensor_msgs_py import point_cloud2
-from std_msgs.msg import Header
 
 from gz.msgs10 import laserscan_pb2
 from gz.transport13 import Node as GzNode
+
+# livox_ros_driver2's LivoxPointXyzrtlt (comm.h, #pragma pack(1)).
+LIVOX_POINT = np.dtype([
+    ('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('intensity', '<f4'),
+    ('tag', 'u1'), ('line', 'u1'), ('timestamp', '<f8'),
+])
+LIVOX_FIELDS = [
+    PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
+    PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
+    PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
+    PointField(name='intensity', offset=12, datatype=PointField.FLOAT32, count=1),
+    PointField(name='tag', offset=16, datatype=PointField.UINT8, count=1),
+    PointField(name='line', offset=17, datatype=PointField.UINT8, count=1),
+    PointField(name='timestamp', offset=18, datatype=PointField.FLOAT64, count=1),
+]
 
 
 class LidarToPointCloud(Node):
@@ -85,17 +106,24 @@ class LidarToPointCloud(Node):
         z = r * np.sin(v_ang)
         intensity = intensities[v_idx, h_idx]
 
-        points = np.column_stack((x, y, z, intensity)).astype(np.float32)
-        fields = [
-            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
-            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
-            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
-            PointField(name='intensity', offset=12, datatype=PointField.FLOAT32, count=1),
-        ]
-        header = Header()
-        header.frame_id = msg.frame
-        header.stamp = self.get_clock().now().to_msg()
-        cloud = point_cloud2.create_cloud(header, fields, points)
+        stamp_ns = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nsec
+        points = np.zeros(len(r), dtype=LIVOX_POINT)
+        points['x'], points['y'], points['z'] = x, y, z
+        points['intensity'] = intensity
+        points['line'] = v_idx % 4
+        points['timestamp'] = float(stamp_ns)
+
+        cloud = PointCloud2()
+        cloud.header.frame_id = msg.frame
+        cloud.header.stamp.sec, cloud.header.stamp.nanosec = divmod(stamp_ns, 1_000_000_000)
+        cloud.height = 1
+        cloud.width = len(points)
+        cloud.fields = LIVOX_FIELDS
+        cloud.is_bigendian = False
+        cloud.point_step = LIVOX_POINT.itemsize
+        cloud.row_step = cloud.point_step * cloud.width
+        cloud.is_dense = True
+        cloud.data = points.tobytes()
         self.pub.publish(cloud)
 
 
