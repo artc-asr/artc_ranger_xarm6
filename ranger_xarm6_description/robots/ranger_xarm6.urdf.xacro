@@ -320,17 +320,66 @@
        internally; ros2_control_plugin/dof match what was passed there,
        hard_interface left at its default (PositionJointInterface,
        matching effort_control=false/velocity_control=false,
-       xarm_device's own defaults, which the arm above also used). -->
+       xarm_device's own defaults, which the arm above also used).
+       xarm_gripper_macro's own parts are called one by one instead of the
+       macro itself, so that in Gazebo the five finger/knuckle joints can
+       join drive_joint's ros2_control block (below). The macro follows
+       drive_joint with libgazebo_mimic_joint_plugin.so, a Gazebo Classic
+       plugin gz-sim never loads, and gz-sim's own mimic constraint (from
+       the URDF <mimic> tags) needs bullet-featherstone, not DART, which
+       it logs as "the chosen physics engine does not support mimic
+       constraints": without either, only drive_joint's outer knuckle moved
+       and the fingers hung loose. -->
   <xacro:include filename="$(find xarm_description)/urdf/gripper/xarm_gripper_macro.xacro" />
-  <xacro:xarm_gripper_macro
+  <xacro:xarm_gripper_urdf
     prefix="$(arg prefix)"
     attach_to="$(arg prefix)camera_mount_link"
     attach_xyz="0 0 0.003"
     attach_rpy="0 0 0"
-    ros2_control_plugin="$(arg ros2_control_plugin)"
-    dof="6"
     gripper_version="G2"
   />
+  <xacro:xarm_gripper_transmission prefix="$(arg prefix)" />
+  <xacro:xarm_gripper_gazebo prefix="$(arg prefix)" />
+  <!-- Gazebo: gz_ros2_control's own mimic joints (a 'mimic' param on a
+       joint in the same <ros2_control> block as the joint it follows)
+       drive each finger/knuckle joint to drive_joint's position every
+       update, on any physics engine. They show up in joint_states as
+       '<joint>_mimic'; robot_state_publisher still places the fingers from
+       drive_joint via the URDF <mimic> tags. Real hardware
+       (UFRobotSystemHardware): no gripper block, same as
+       xarm_gripper_macro; any other plugin (fake hardware): its block. -->
+  <xacro:if value="${'$(arg ros2_control_plugin)' == 'gz_ros2_control/GazeboSimSystem'}">
+    <ros2_control name="$(arg prefix)XArmGripperSystem" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </hardware>
+      <joint name="$(arg prefix)drive_joint">
+        <command_interface name="position" />
+        <command_interface name="velocity">
+          <param name="min">-3.14</param>
+          <param name="max">3.14</param>
+        </command_interface>
+        <state_interface name="position" />
+        <state_interface name="velocity" />
+      </joint>
+      <xacro:macro name="_gripper_mimic_joint" params="name">
+        <joint name="$(arg prefix)${name}">
+          <param name="mimic">$(arg prefix)drive_joint</param>
+          <param name="multiplier">1</param>
+          <state_interface name="position" />
+          <state_interface name="velocity" />
+        </joint>
+      </xacro:macro>
+      <xacro:_gripper_mimic_joint name="left_finger_joint" />
+      <xacro:_gripper_mimic_joint name="left_inner_knuckle_joint" />
+      <xacro:_gripper_mimic_joint name="right_outer_knuckle_joint" />
+      <xacro:_gripper_mimic_joint name="right_finger_joint" />
+      <xacro:_gripper_mimic_joint name="right_inner_knuckle_joint" />
+    </ros2_control>
+  </xacro:if>
+  <xacro:unless value="${'$(arg ros2_control_plugin)' in ('gz_ros2_control/GazeboSimSystem', 'uf_robot_hardware/UFRobotSystemHardware')}">
+    <xacro:xarm_gripper_ros2_control prefix="$(arg prefix)" ros2_control_plugin="$(arg ros2_control_plugin)" />
+  </xacro:unless>
 
   <!-- Arm-to-base mounting plate (visual/collision only, no new joint):
        the physical bracket the xArm6 bolts to on top of the Ranger, per

@@ -27,6 +27,19 @@
 
   <xacro:macro name="ranger_mini_v3" params="prefix">
 
+    <!-- Joint damping [N*m*s/rad] and Coulomb friction [N*m] for the
+         passive steering/wheel joints, simulation only (the real driver
+         and MoveIt ignore <dynamics>). Nothing drives these joints: in sim
+         the base is teleported (base_pose_publisher.py), so without them
+         the steering joints swung freely (~1 rad/s) and the wheels rolled
+         while parked, and the arm's reaction forces rolled the chassis.
+         They don't change how the base moves when driving, that's the
+         teleport's. -->
+    <xacro:property name="steering_damping" value="5.0" />
+    <xacro:property name="steering_friction" value="2.0" />
+    <xacro:property name="wheel_damping" value="1.0" />
+    <xacro:property name="wheel_friction" value="1.0" />
+
     <link name="${prefix}base_link">
       <inertial>
         <origin
@@ -108,6 +121,7 @@
       <axis
         xyz="0 0 -1" />
       <limit effort="5" velocity="6.28"  lower="-2.1" upper="2.1" />
+      <dynamics damping="${steering_damping}" friction="${steering_friction}" />
     </joint>
 
     <link name="${prefix}fr_wheel_link">
@@ -140,6 +154,7 @@
       <parent link="${prefix}fr_steering_wheel_link"/>
       <child link="${prefix}fr_wheel_link"/>
       <axis xyz="0 1 0" rpy="0 0 0" />
+      <dynamics damping="${wheel_damping}" friction="${wheel_friction}" />
     </joint>
 
     <link name="${prefix}fl_steering_wheel_link">
@@ -192,6 +207,7 @@
       <axis
         xyz="0 0 -1" />
       <limit effort="5" velocity="6.28"  lower="-2.1" upper="2.1" />
+      <dynamics damping="${steering_damping}" friction="${steering_friction}" />
     </joint>
 
     <link name="${prefix}fl_wheel_link">
@@ -224,6 +240,7 @@
       <parent link="${prefix}fl_steering_wheel_link"/>
       <child link="${prefix}fl_wheel_link"/>
       <axis xyz="0 1 0" rpy="0 0 0" />
+      <dynamics damping="${wheel_damping}" friction="${wheel_friction}" />
     </joint>
 
     <link name="${prefix}rl_steering_wheel_link">
@@ -277,6 +294,7 @@
       <axis
         xyz="0 0 -1" />
       <limit effort="5" velocity="6.28"  lower="-2.1" upper="2.1" />
+      <dynamics damping="${steering_damping}" friction="${steering_friction}" />
     </joint>
 
     <link name="${prefix}rl_wheel_link">
@@ -309,6 +327,7 @@
       <parent link="${prefix}rl_steering_wheel_link"/>
       <child link="${prefix}rl_wheel_link"/>
       <axis xyz="0 1 0" rpy="0 0 0" />
+      <dynamics damping="${wheel_damping}" friction="${wheel_friction}" />
     </joint>
 
     <link name="${prefix}rr_steering_wheel_link">
@@ -338,6 +357,7 @@
       <child link="${prefix}rr_steering_wheel_link"/>
       <axis xyz="0 0 -1" rpy="0 0 0" />
       <limit effort="5" velocity="6.28"  lower="-2.1" upper="2.1" />
+      <dynamics damping="${steering_damping}" friction="${steering_friction}" />
     </joint>
 
     <link name="${prefix}rr_wheel_link">
@@ -370,6 +390,7 @@
       <parent link="${prefix}rr_steering_wheel_link"/>
       <child link="${prefix}rr_wheel_link"/>
       <axis xyz="0 1 0" rpy="0 0 0" />
+      <dynamics damping="${wheel_damping}" friction="${wheel_friction}" />
     </joint>
 
   </xacro:macro>
