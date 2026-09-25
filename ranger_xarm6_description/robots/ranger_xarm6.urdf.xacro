@@ -662,8 +662,9 @@
   <!-- Mid-360's built-in IMU (ICM-40609): the chip sits at (11.0, 23.29,
        -44.12) mm in point-cloud (livox_frame) coordinates, axes the same
        as the point cloud's (Livox Mid-360 User Manual). The real driver
-       stamps its messages "livox_frame" regardless (see
-       gz_livox_imu.py); this frame is the lidar-IMU extrinsic. -->
+       stamps its messages "livox_frame" regardless; this frame is the
+       lidar-IMU extrinsic. Simulated by sim_livox_imu.py, not by a Gazebo
+       sensor (see there). -->
   <link name="$(arg prefix)livox_imu_frame" />
   <joint name="$(arg prefix)livox_imu_joint" type="fixed">
     <parent link="$(arg prefix)livox_frame" />
@@ -1368,19 +1369,6 @@
         <state_interface name="linear_acceleration.y"/>
         <state_interface name="linear_acceleration.z"/>
       </sensor>
-      <!-- Same, for the Mid-360's built-in IMU (livox_imu_sensor). -->
-      <sensor name="$(arg prefix)livox_imu_sensor">
-        <state_interface name="orientation.x"/>
-        <state_interface name="orientation.y"/>
-        <state_interface name="orientation.z"/>
-        <state_interface name="orientation.w"/>
-        <state_interface name="angular_velocity.x"/>
-        <state_interface name="angular_velocity.y"/>
-        <state_interface name="angular_velocity.z"/>
-        <state_interface name="linear_acceleration.x"/>
-        <state_interface name="linear_acceleration.y"/>
-        <state_interface name="linear_acceleration.z"/>
-      </sensor>
     </ros2_control>
   </xacro:if>
 
@@ -1615,47 +1603,6 @@
             <stddev>0.03</stddev>
           </noise>
         </lidar>
-      </sensor>
-    </gazebo>
-  </xacro:if>
-
-  <!-- Mid-360 built-in IMU (gz-sim only), on livox_imu_frame. 200 Hz like
-       the real one. White noise from the ICM-40609-D datasheet over the
-       100 Hz Nyquist band: gyro 0.0045 deg/s/rtHz -> 7.9e-4 rad/s,
-       accel 100 ug/rtHz -> 9.8e-3 m/s^2. The turn-on biases (bias_stddev)
-       are a moderate guess for a factory-calibrated unit, not datasheet
-       values (its uncalibrated board-level tolerances, +-1 deg/s and
-       +-40 mg, are far larger). Published raw on '<prefix>livox/imu_raw';
-       gz_livox_imu.py republishes it the way livox_ros_driver2 does. -->
-  <xacro:macro name="_livox_imu_axis_noise" params="axis stddev bias_stddev">
-    <xacro:element xacro:name="${axis}">
-      <noise type="gaussian">
-        <mean>0.0</mean>
-        <stddev>${stddev}</stddev>
-        <bias_mean>0.0</bias_mean>
-        <bias_stddev>${bias_stddev}</bias_stddev>
-      </noise>
-    </xacro:element>
-  </xacro:macro>
-  <xacro:if value="${_is_gz_sim}">
-    <gazebo reference="$(arg prefix)livox_imu_frame">
-      <sensor name="$(arg prefix)livox_imu_sensor" type="imu">
-        <always_on>1</always_on>
-        <update_rate>200</update_rate>
-        <topic>$(arg prefix)livox/imu_raw</topic>
-        <gz_frame_id>$(arg prefix)livox_imu_frame</gz_frame_id>
-        <imu>
-          <angular_velocity>
-            <xacro:_livox_imu_axis_noise axis="x" stddev="7.9e-4" bias_stddev="1e-3" />
-            <xacro:_livox_imu_axis_noise axis="y" stddev="7.9e-4" bias_stddev="1e-3" />
-            <xacro:_livox_imu_axis_noise axis="z" stddev="7.9e-4" bias_stddev="1e-3" />
-          </angular_velocity>
-          <linear_acceleration>
-            <xacro:_livox_imu_axis_noise axis="x" stddev="9.8e-3" bias_stddev="0.02" />
-            <xacro:_livox_imu_axis_noise axis="y" stddev="9.8e-3" bias_stddev="0.02" />
-            <xacro:_livox_imu_axis_noise axis="z" stddev="9.8e-3" bias_stddev="0.02" />
-          </linear_acceleration>
-        </imu>
       </sensor>
     </gazebo>
   </xacro:if>

@@ -39,9 +39,9 @@ its integrated pose drifts from the TF above the way wheel odometry
 drifts from the truth. Same format as the real driver: frame_id odom,
 child base_link, twist in base_link, covariances all zero, no TF (the
 TF above stays ground truth). The true pose and twist go out the same
-way on 'ground_truth/odom' (gz_livox_imu.py adds the base's motion to
-the simulated IMU from it: teleporting gives the links no velocity, so
-Gazebo's IMUs can't sense it).
+way on 'ground_truth/odom' (sim_livox_imu.py computes the simulated
+Mid-360 IMU from it: teleporting gives the links no velocity, so
+Gazebo's IMUs can't sense the base's motion).
 
 With publish_tf false (ranger_xarm6.launch.py publish_odom_tf:=false),
 the TF is left to something else, e.g. ranger_xarm6_navigation's EKF;
