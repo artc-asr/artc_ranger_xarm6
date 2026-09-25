@@ -9,12 +9,16 @@ Application code (e.g. [wbcc_mm](https://github.com/artc-asr/whole_body_complian
 | Package | Description |
 |---|---|
 | `ranger_xarm6_description` | Combined description + bringup launch. Joins the base and arm through a fixed mount transform; `ranger_xarm6.launch.py` supports both Gazebo Harmonic simulation and real hardware (`sim:=true/false`). |
+| `ranger_xarm6_moveit_config` | MoveIt 2 config: the base as `base_x/y/theta` joints (crab and spin never mixed), the arm, and `whole_body`. |
+| `ranger_xarm6_manipulation` | MoveIt-based base + arm control (sequential or whole-body), `MoveToGoal` action. See its [README](ranger_xarm6_manipulation/README.md). |
+| `ranger_xarm6_navigation` | Odometry (EKF over wheel odometry + the Mid-360's IMU) and FAST-LIO2 3D mapping; localization and Nav2 to follow. See its [README](ranger_xarm6_navigation/README.md). |
 | `ranger_mini_v3_description` | Vendored — missing from upstream `ranger_ros2` for ROS 2 Humble at the time this was ported. |
 | `xarm_ros2` (submodule) | UFACTORY xArm6 description, ros2_control, and driver packages. |
 | `westonrobot_ranger_ros2` (submodule) | Ranger Mini 3.0 real-hardware bringup/driver. |
 | `ugv_sdk` (submodule) | Weston Robot UGV SDK — `ranger_ros2`'s driver dependency. |
 | `gz_ros2_control` (submodule, `humble` branch) | Built from source with `GZ_VERSION=harmonic` (see below) — the `ros-humble-gz-ros2-control` **apt** package is built against Fortress (`libignition-gazebo6`) regardless of what's installed locally, so on a Harmonic system its plugin exports the wrong ABI symbol (`IgnitionPluginHook` instead of `GzPluginHook`) and Gazebo silently fails to load it, which cascades into `controller_manager` never starting and `joint_state_broadcaster`/`arm_velocity_controller` never spawning. Building this submodule locally (the main `colcon build` below already does, since `GZ_VERSION=harmonic` is exported first) overlays a correctly-linked version. |
 | `Livox-SDK2` (submodule) | Livox's low-level lidar SDK (Mid-360 support). No apt package exists; built from source to a **user-writable prefix** (`$HOME/.local`, not `/usr/local` via `sudo make install` as Livox's own README suggests) — see below. |
+| `FAST_LIO` (submodule, `ROS2` branch) | FAST-LIO2 lidar-inertial odometry/mapping (hku-mars), used by `ranger_xarm6_navigation`'s mapping. Has its own `ikd-Tree` submodule (`--recurse-submodules` fetches it). |
 | `livox_ros_driver2` (submodule) | ROS 2 driver for the Mid-360, built against `Livox-SDK2` above. Its `package.xml` is intentionally **not** committed upstream (gitignored in that submodule, since the same source tree serves both ROS1 and ROS2 via templated `package_ROS1.xml`/`package_ROS2.xml`) — regenerate it after every fresh clone, see below. |
 
 ## Installation
@@ -42,6 +46,9 @@ sudo apt install ros-humble-ros-gzharmonic
 sudo apt-get install -y \
   ros-humble-realsense2-description ros-humble-realsense2-camera \
   ros-humble-orbbec-description ros-humble-orbbec-camera
+
+# Navigation: robot_localization (EKF), pcl_ros (FAST-LIO); rosdep below also finds them
+sudo apt-get install -y ros-humble-robot-localization ros-humble-pcl-ros
 
 rosdep install --from-paths . --ignore-src -r -y \
   --skip-keys "gz_sim_vendor sdformat_vendor gz_transport_vendor gz_msgs_vendor"
@@ -99,6 +106,16 @@ Then, optionally, a controller on top (MoveIt 2 planning for base + arm, sequent
 ```bash
 ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
 ros2 launch ranger_xarm6_manipulation control.launch.py controller:=moveit_sequential   # or moveit_whole_body; --show-args lists them
+```
+
+Navigation (see [`ranger_xarm6_navigation`](ranger_xarm6_navigation/README.md)): odometry from the EKF instead of the base, and a FAST-LIO2 mapping session:
+
+```bash
+ros2 launch ranger_xarm6_description ranger_xarm6.launch.py publish_odom_tf:=false world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
+ros2 launch ranger_xarm6_navigation odometry.launch.py x:=0.94 y:=4.35 yaw:=-1.5708
+ros2 launch ranger_xarm6_navigation mapping.launch.py map:=~/ranger_xarm6_maps/lab.pcd
+# drive around (arm stowed), then
+ros2 service call /robot_a/map_save std_srvs/srv/Trigger
 ```
 
 Either way the arm is exposed as an `arm_velocity_controller` joint group, so downstream control code drives it identically in sim or on hardware. Base drive on real hardware isn't wired up yet (`ranger_bringup`/`ranger_ros2`, vendored, untested); in simulation it's driven by `ranger_xarm6_description/scripts/base_pose_publisher.py`, a kinematic (not physics-based) stand-in that integrates `cmd_vel` and teleports the Gazebo entity, since Ranger's wheels have no `ros2_control` command interface.
