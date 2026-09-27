@@ -1,5 +1,6 @@
 // What a depth camera has seen, kept after it's out of view: for
-// collision_monitor, which only looks at the latest data.
+// collision_monitor, which only looks at the latest data, and for Nav2's
+// costmaps, which forget it when a recovery clears them.
 //
 // The front D435i (0.69 m up, level) sees a 0.15 m-tall obstacle only from
 // ~1 m ahead of the lens, and the lidar not at all; collision_monitor's
@@ -12,12 +13,18 @@
 //    range, and the depth there is more than clear_margin beyond it (the
 //    obstacle has gone). No depth there (too close, too far) clears
 //    nothing;
-//  - it's older than max_age, or farther than keep_radius from the robot;
-//  - it's inside the robot's footprint box (base_frame): it can't be an
-//    obstacle there, and collision_monitor would stop for good.
+//  - it's older than max_age and farther than near_radius from the robot
+//    (near the robot is where the camera can't look again: an obstacle
+//    there is kept however old; sim, a 0.21 m box beside the goal was
+//    forgotten after 60 s while the base still pushed at it), or farther
+//    than keep_radius;
+//  - it's well inside the robot's body (footprint box, base_frame): it
+//    can't be an obstacle there, and collision_monitor would stop for
+//    good. Keep the box inside the footprint: points at its edge are the
+//    ones collision_monitor needs.
 // The strip right in front of the bumper is below the camera's view, so a
-// voxel there is only forgotten by age (or when the base backs off and the
-// camera sees the spot again).
+// voxel there stays until the base has moved away from it (collision_monitor
+// still lets it turn or back off; only motion into the voxel is stopped).
 //
 // Heights: points z_min..z_max in odom (odom's z = 0 is the floor, see
 // odometry.launch.py). Topics: depth, camera_info (as depth_to_cloud),
@@ -76,10 +83,11 @@ public:
     z_min_ = declare_parameter("z_min", 0.05);
     z_max_ = declare_parameter("z_max", 1.5);
     clear_margin_ = declare_parameter("clear_margin", 0.1);
-    max_age_ = declare_parameter("max_age", 30.0);
+    max_age_ = declare_parameter("max_age", 60.0);
     keep_radius_ = declare_parameter("keep_radius", 3.0);
-    fp_ = {declare_parameter("footprint_min_x", -0.57), declare_parameter("footprint_max_x", 0.42),
-      declare_parameter("footprint_min_y", -0.31), declare_parameter("footprint_max_y", 0.31)};
+    near_radius_ = declare_parameter("near_radius", 1.0);
+    fp_ = {declare_parameter("footprint_min_x", -0.45), declare_parameter("footprint_max_x", 0.30),
+      declare_parameter("footprint_min_y", -0.20), declare_parameter("footprint_max_y", 0.20)};
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
     pub_ = create_publisher<PointCloud2>("points", rclcpp::SensorDataQoS());
@@ -177,7 +185,8 @@ private:
     for (auto it = voxels_.begin(); it != voxels_.end(); ) {
       const Eigen::Vector3d c = it->second.centre();
       const Eigen::Vector3d b = base_odom * c;
-      bool forget = t - it->second.last_seen > max_age_ || b.head<2>().norm() > keep_radius_ ||
+      const double range = b.head<2>().norm();
+      bool forget = (t - it->second.last_seen > max_age_ && range > near_radius_) || range > keep_radius_ ||
         (b.x() >= fp_[0] && b.x() <= fp_[1] && b.y() >= fp_[2] && b.y() <= fp_[3]);
       if (!forget) {
         const Eigen::Vector3d p = cam_odom * c;
@@ -252,7 +261,7 @@ private:
   }
 
   std::string odom_frame_, base_frame_, frame_id_;
-  double voxel_, min_range_, max_range_, z_min_, z_max_, clear_margin_, max_age_, keep_radius_;
+  double voxel_, min_range_, max_range_, z_min_, z_max_, clear_margin_, max_age_, keep_radius_, near_radius_;
   std::vector<double> fp_;
   CameraInfo::ConstSharedPtr info_;
   std::deque<Image::ConstSharedPtr> pending_;

@@ -55,18 +55,11 @@ Visualization Manager:
       Color: 0; 255; 0
       Value: true
     - Class: rviz_default_plugins/Polygon
-      Name: Collision Stop Zone
+      Name: Collision Monitor Footprint
       Enabled: true
       Topic:
-        Value: /robot_a/polygon_stop
+        Value: /robot_a/polygon_approach
       Color: 255; 0; 0
-      Value: true
-    - Class: rviz_default_plugins/Polygon
-      Name: Collision Slowdown Zone
-      Enabled: true
-      Topic:
-        Value: /robot_a/polygon_slowdown
-      Color: 255; 170; 0
       Value: true
     - Class: rviz_default_plugins/Path
       Name: Global Plan

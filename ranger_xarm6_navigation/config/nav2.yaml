@@ -151,6 +151,8 @@ local_costmap:
       height: 8
       resolution: 0.05
       footprint: "[[0.38, 0.27], [0.38, -0.27], [-0.53, -0.27], [-0.53, 0.27]]"
+      # collision_monitor's approach uses this footprint too. 6 cm was too
+      # much: the base then couldn't turn around beside tables (sim).
       footprint_padding: 0.03
       plugins: [obstacle_layer, inflation_layer]
       # Voxel, not the 2D ObstacleLayer: a 2D layer clears an obstacle with
@@ -164,7 +166,7 @@ local_costmap:
         mark_threshold: 0
         publish_voxel_map: false
         footprint_clearing_enabled: true   # the lidar sees the arm
-        observation_sources: lidar front_depth front_depth_clear
+        observation_sources: lidar front_depth front_depth_clear front_memory
         lidar:
           topic: /robot_a/livox/lidar
           data_type: PointCloud2
@@ -201,6 +203,21 @@ local_costmap:
           raytrace_max_range: 3.0
           marking: false
           clearing: true
+        front_memory:
+          # What the front camera has seen (obstacle_memory, odom). A low
+          # obstacle close to the robot is below the camera's view, and
+          # Nav2's recoveries clear the costmaps: without this the planner
+          # then routed through a 0.21 m box beside the goal and the
+          # controller pushed into the collision monitor's stop (sim).
+          # Marking only; the cloud's frame is odom, so its "sensor" is
+          # odom's origin: ranges measured from there, hence huge.
+          topic: /robot_a/fixed_cam1_camera/depth/obstacle_memory
+          data_type: PointCloud2
+          min_obstacle_height: 0.05
+          max_obstacle_height: 1.5
+          obstacle_max_range: 1000.0
+          marking: true
+          clearing: false
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
         inflation_radius: 0.6
@@ -235,7 +252,7 @@ global_costmap:
         mark_threshold: 0
         publish_voxel_map: false
         footprint_clearing_enabled: true
-        observation_sources: lidar front_depth front_depth_clear
+        observation_sources: lidar front_depth front_depth_clear front_memory
         lidar:
           topic: /robot_a/livox/lidar
           data_type: PointCloud2
@@ -270,6 +287,21 @@ global_costmap:
           raytrace_max_range: 3.0
           marking: false
           clearing: true
+        front_memory:
+          # What the front camera has seen (obstacle_memory, odom). A low
+          # obstacle close to the robot is below the camera's view, and
+          # Nav2's recoveries clear the costmaps: without this the planner
+          # then routed through a 0.21 m box beside the goal and the
+          # controller pushed into the collision monitor's stop (sim).
+          # Marking only; the cloud's frame is odom, so its "sensor" is
+          # odom's origin: ranges measured from there, hence huge.
+          topic: /robot_a/fixed_cam1_camera/depth/obstacle_memory
+          data_type: PointCloud2
+          min_obstacle_height: 0.05
+          max_obstacle_height: 1.5
+          obstacle_max_range: 1000.0
+          marking: true
+          clearing: false
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
         inflation_radius: 0.6
@@ -336,10 +368,9 @@ velocity_smoother:
 
 # Last in the chain: velocity_smoother -> cmd_vel_smoothed -> here ->
 # cmd_vel. Works on the raw sensors (not the costmaps, planner or
-# controller) and stops/slows the base on its own: the backstop for a
+# controller) and slows/stops the base on its own: the backstop for a
 # controller that has lost its pose and keeps sending an old command.
-# Zones are in base_link (0.315 m above the floor), so heights here are
-# floor heights - 0.315. The Mid-360 goes through cloud_self_filter first
+# Heights are in base_link (0.315 m above the floor): floor heights - 0.315. The Mid-360 goes through cloud_self_filter first
 # (navigation.launch.py): it sees the arm, which would sit in every zone.
 # The front camera is in twice: its latest cloud, and obstacle_memory (what
 # it saw; a low obstacle is below its view by the time it's in a zone).
@@ -356,30 +387,19 @@ collision_monitor:
     source_timeout: 1.0
     base_shift_correction: true
     stop_pub_timeout: 2.0
-    polygons: [PolygonStop, PolygonSlow, FootprintApproach]
-    # A strip in front of the bumper (x 0.38 + padding + 4 cm): the base
-    # only drives forward and spins; a stop zone all round would also
-    # stop it from turning away from something beside it.
-    PolygonStop:
-      type: polygon
-      points: [0.55, 0.31, 0.55, -0.31, 0.42, -0.31, 0.42, 0.31]
-      action_type: stop
-      max_points: 3
-      visualize: true
-      polygon_pub_topic: polygon_stop
-      enabled: true
-    PolygonSlow:
-      type: polygon
-      points: [0.95, 0.4, 0.95, -0.4, 0.42, -0.4, 0.42, 0.4]
-      action_type: slowdown
-      max_points: 3
-      slowdown_ratio: 0.3
-      visualize: true
-      polygon_pub_topic: polygon_slowdown
-      enabled: true
-    # The footprint (arm included, see local_costmap) moved along the
-    # current command: any direction, spins included. Slows the command so
-    # that it's never less than time_before_collision from a hit.
+    polygons: [FootprintApproach]
+    # Approach only. No stop or slowdown zone: in this Nav2 both act on
+    # every command whatever its direction. A stop zone held the base
+    # still next to a remembered obstacle even when backing away from it
+    # (with obstacle_memory, for good), and a slowdown zone held turns at
+    # ~0.05 rad/s (RotationShim accelerates from the measured rate) until
+    # Nav2 gave up beside a box (sim, 2026-09-27).
+    # The local costmap's footprint (arm included, + footprint_padding),
+    # moved along the current command: any direction, spins included. Slows
+    # the command so that it's never less than time_before_collision from
+    # a hit. (This Nav2 takes it from footprint_topic; 'points' is ignored
+    # for approach.) cloud_self_filter's box is 1 cm bigger: the ring
+    # between them is outside the body, so it holds no robot points.
     FootprintApproach:
       type: polygon
       action_type: approach
@@ -387,7 +407,8 @@ collision_monitor:
       time_before_collision: 1.2
       simulation_time_step: 0.1
       max_points: 3
-      visualize: false
+      visualize: true
+      polygon_pub_topic: polygon_approach
       enabled: true
     observation_sources: [lidar, front_depth, front_memory]
     lidar:

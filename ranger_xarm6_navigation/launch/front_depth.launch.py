@@ -45,15 +45,18 @@ def launch_setup(context, *args, **kwargs):
         output='screen',
     )]
     if LaunchConfiguration('memory').perform(context).lower() in ('true', '1', 'yes'):
-        # The footprint box is cloud_self_filter's (navigation.launch.py).
+        # The footprint box: well inside the body (footprint x -0.53..0.38,
+        # y +-0.27). An obstacle can't be there, but one at the edge must
+        # stay: collision_monitor needs exactly those points.
         nodes.append(Node(
             package='ranger_xarm6_navigation', executable='obstacle_memory', name='front_obstacle_memory',
             namespace=robot_id,
             parameters=[{'use_sim_time': use_sim_time, 'frame_id': frame, 'odom_frame': f'{prefix}odom',
                          'base_frame': f'{prefix}base_link', 'voxel_size': 0.05, 'min_range': 0.2,
-                         'max_range': 3.0, 'z_min': 0.05, 'z_max': 1.5, 'clear_margin': 0.1, 'max_age': 30.0,
-                         'keep_radius': 3.0, 'footprint_min_x': -0.57, 'footprint_max_x': 0.42,
-                         'footprint_min_y': -0.31, 'footprint_max_y': 0.31}],
+                         'max_range': 3.0, 'z_min': 0.05, 'z_max': 1.5, 'clear_margin': 0.1, 'max_age': 60.0,
+                         'keep_radius': 3.0, 'near_radius': 1.0,
+                         'footprint_min_x': -0.45, 'footprint_max_x': 0.30,
+                         'footprint_min_y': -0.20, 'footprint_max_y': 0.20}],
             remappings=[('depth', depth), ('camera_info', info), ('points', f'{cam}/depth/obstacle_memory')],
             output='screen',
         ))

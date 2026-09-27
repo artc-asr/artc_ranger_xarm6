@@ -16,7 +16,7 @@ localization (`map -> odom`).
 | `scripts/pcd_to_grid.py` | The `.pcd` map (+ `<map>_depth.pcd`) -> a 2D occupancy grid (map_server `.pgm` + `.yaml`). |
 | `launch/navigation.launch.py` | Nav2 on that grid: NavFn, RotationShim + Regulated Pure Pursuit, lidar + front depth voxel costmaps, velocity smoother, collision monitor. |
 | `src/cloud_self_filter.cpp` | The lidar cloud without the robot (arm), for the collision monitor. |
-| `src/obstacle_memory.cpp` | What the front camera has seen, kept after it's out of view, for the collision monitor. |
+| `src/obstacle_memory.cpp` | What the front camera has seen, kept after it's out of view, for the collision monitor and the costmaps. |
 | `launch/front_depth.launch.py` | `depth_to_cloud` for the front D435i; included by mapping and navigation. |
 | `src/depth_to_cloud.cpp` | A depth image -> a small cloud (5 cm voxels within 3 m), released once TF can place it. |
 | `src/livox_cloud_to_custom.cpp` | The Livox driver's `PointCloud2` -> the Livox `CustomMsg` FAST-LIO reads. |
@@ -70,9 +70,21 @@ ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_map
 ```
 
 Wait for `Managed nodes are active` twice, then **2D Goal Pose** in RViz
-(the red/orange boxes in front of the robot are the collision monitor's
-stop and slowdown zones), or `ros2 action send_goal` (see "Navigation").
-Obstacles to try: spawn a box in front of the robot in Gazebo, e.g.
+(the red outline is the footprint the collision monitor checks), or
+`ros2 action send_goal` (see "Navigation").
+**Random obstacles** (the red area of `world_plan_view.png`, not in the
+map): add `random_obstacles:=5` to the sim launch (`obstacle_seed:=7` for
+a layout you can repeat; the seed used is printed), or at any time:
+
+```bash
+ros2 run ranger_xarm6_description spawn_obstacles.py --count 5          # new layout
+ros2 run ranger_xarm6_description spawn_obstacles.py --count 5 --seed 7 # the same one again
+ros2 run ranger_xarm6_description spawn_obstacles.py --clear
+```
+
+Boxes 0.15-0.4 m wide, 0.1-0.5 m tall (some below what the lidar sees up
+close), at least 0.9 m apart. Keep goals ~0.7 m from a box: the base
+turns in place and needs the room. One box by hand:
 
 ```bash
 gz service -s /world/artc_lab/create --reqtype gz.msgs.EntityFactory --reptype gz.msgs.Boolean \
@@ -278,30 +290,30 @@ front camera's topics default to realsense2_camera's
   Local costmap 8x8 m around the robot.
 - **Collision monitor** (`collision_monitor`, last in the chain:
   velocity_smoother -> `cmd_vel_smoothed` -> collision_monitor ->
-  `cmd_vel`): stops or slows the base from the raw sensors on its own,
+  `cmd_vel`): slows or stops the base from the raw sensors on its own,
   whatever the planner, controller and costmaps think. The backstop for
   a controller that has lost the robot's pose and keeps sending its last
-  command. Zones (base_link, heights 0.05-1.5 m above the floor):
-  - stop: a strip 0.42-0.55 m ahead (the bumper is at 0.38; a stop zone
-    all round would also stop the base turning away from something beside
-    it);
-  - slowdown to 30%: 0.42-0.95 m ahead, 0.8 m wide;
-  - approach: the footprint moved along the current command, any
-    direction, spins included; the command is scaled so that a hit is
-    never less than 1.2 s away.
+  command. One zone, **approach**: the local costmap's footprint (arm
+  included, + 3 cm) moved along the current command, in any direction,
+  spins included; the command is scaled so that a hit is never less than
+  1.2 s away. No stop or slowdown zone: in this Nav2 both act on every
+  command whatever its direction, so a stop zone kept the base from
+  backing away from what stopped it, and a slowdown zone held turns at
+  ~0.05 rad/s (RotationShim accelerates from the measured rate).
 
-  Sources: the Mid-360 through `cloud_self_filter` (it sees the arm,
-  which would sit in every zone: points inside the published footprint +
-  1 cm are dropped), the front depth cloud, and `obstacle_memory`: what
-  the front camera has seen, kept in odom after it's out of view. The
-  monitor itself only looks at the latest data, and a low obstacle is
-  below the camera's view by the time it's in a zone. A remembered spot
-  is forgotten when the camera sees past it (obstacle gone), after 30 s,
-  beyond 3 m, or inside the footprint. The strip right in front of the
-  bumper is below the camera's view: something remembered there is only
-  forgotten by age (the base waits up to 30 s) or once the base backs
-  off and the camera sees the spot again. It publishes only while
-  commands come in, so teleop and manipulation's `cmd_vel` are untouched.
+  Sources (0.05-1.5 m above the floor): the Mid-360 through
+  `cloud_self_filter` (it sees the arm, which would always be "in
+  collision"), the front depth cloud, and `obstacle_memory`.
+- **`obstacle_memory`**: what the front camera has seen, kept in odom
+  after it's out of view (a low obstacle is below the camera's view by
+  the time it's close). Also a marking source in both costmaps: Nav2's
+  recoveries clear the costmaps, and without it the planner then routed
+  through a box the camera could no longer see. A remembered spot is
+  forgotten when the camera sees past it (obstacle gone), after 60 s if
+  more than 1 m from the robot, beyond 3 m, or well inside the body. Near
+  the robot it's never forgotten by age: a false one there doesn't trap
+  the base (approach still lets it turn or back away; backing off lets
+  the camera look again).
 - **Why `depth_to_cloud` and not the camera's cloud**: a 424x240 cloud is
   ~100k points (2-3 MB, 15 Hz); 5 cm voxels within 3 m are ~5k. And it
   releases each cloud only once TF can place it in odom (+50 ms): the
@@ -339,18 +351,24 @@ the planned path (each on a fresh sim):
 | 0.3 x 0.3 x 0.15 m, dropped 1.8 m ahead while driving | reached | 29 s | 9.9 cm / 4.7 deg | 36 cm |
 
 Collision monitor (fixed command published straight into it, i.e. no
-planner or controller; `stop`/`slowdown`/`approach` as configured above):
+planner or controller):
 
 | Test | Result |
 |---|---|
-| 0.3 m/s straight at a wall | slowed, stopped 23 cm from it |
-| 0.15 m/s straight at a wall | stopped 25 cm from it |
-| 0.3 m/s at a table's side (tabletop 0.73 m, legs only at the corners) | stopped 16 cm from the tabletop edge (camera) |
-| spin 0.4 rad/s, side 18 cm from a wall | approach cut the spin to 0.12 rad/s, stopped after 12 deg, 11 cm from the wall |
-| Nav2 goal, controller frozen, its last command (0.3 m/s) kept coming | stopped 24 cm from the wall |
-| 0.3 m/s at a 0.15 m box (lidar can't see it; the camera only from 1.25 m) | stopped 17 cm from it (`obstacle_memory`; without it, drove into it) |
-| same, box removed once the base had stopped | went on 21 s later (the memory aged out), stopped at the wall |
-| Nav2 box runs above, with the monitor in the chain | all reached, 28-29 s, 34-40 cm; no monitor action |
+| 0.3 m/s straight at a wall | stopped 14 cm from it |
+| 0.3 m/s at a 0.15 m box (lidar can't see it, the camera only from 1.25 m) | stopped 6 cm from it (`obstacle_memory`; without it: drove into it) |
+| 0.3 m/s at a table's side (tabletop 0.73 m) | stopped 9 cm from the tabletop edge (camera) |
+| spin 0.4 rad/s, side 18 cm from a wall | stopped 2 cm from it |
+| same box, removed after the stop; back off 1 m; forward again | backed off, then drove on through the empty spot |
+| Nav2 goal, controller frozen, its last command (0.3 m/s) kept coming | stopped (earlier zone setup: 24 cm) |
+
+Nav2 through random obstacles (`random_obstacles:=5`, seeds 7/11/23;
+spawn -> 8.2,2.4 -> 2.4,1.4 -> 5.5,3.4 -> home): no contact in any run,
+closest 4 cm. Seed 11: all four goals. Seed 7: the turn-around at 8.2,2.4
+next to a box is blocked (the turning footprint would hit it), the goal
+aborts. Seed 23: goal 5.5,3.4 overlaps a box and aborts; the base then
+stays wedged beside it. Nav2 here only turns in place and never
+reverses: with no room to turn, it aborts rather than hits.
 
 A frozen (not just stuck) Nav2 node trips the lifecycle manager's bond
 (~4 s): it deactivates the whole stack, collision monitor included, and
@@ -358,7 +376,13 @@ nothing publishes `cmd_vel` any more. The sim base stops after 0.5 s
 without commands; the real base's own command timeout is what stops it
 then.
 
-**Remaining gap: the camera's near blind zone.** The front D435i is 0.69
+**Remaining gaps.** Turning room: a goal beside an obstacle may be
+unreachable (see above); allowing reversing (RPP `allow_reversing`) or a
+planner that knows the footprint (Smac) is the next step. Tabletops
+beside the robot: the lidar can't see a tabletop edge within ~0.7 m and
+the camera only looks forward, so a spin next to a table relies on the
+costmap and memory having seen it earlier. And the camera's near blind
+zone: The front D435i is 0.69
 m up and level, 87 x 58 deg: it sees the floor from ~1 m ahead of the
 lens, a 0.15 m-tall obstacle from 1.0 m, a 0.4 m one from 0.55 m.
 What it marked on the way in stays marked; an obstacle that appears
