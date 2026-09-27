@@ -726,6 +726,21 @@ def launch_setup(context, *args, **kwargs):
         post_spawn_actions = list(controller_spawners)
         if run_rviz:
             post_spawn_actions.append(rviz_node)
+        # Random boxes in artc_lab's open area (not in the world file, so
+        # not in the map), for collision avoidance tests; see
+        # spawn_obstacles.py, which can also re-roll or clear them later.
+        random_obstacles = int(LaunchConfiguration('random_obstacles').perform(context))
+        if random_obstacles > 0:
+            if gz_world_name == 'artc_lab':
+                post_spawn_actions.append(Node(
+                    package='ranger_xarm6_description',
+                    executable='spawn_obstacles.py',
+                    arguments=['--count', str(random_obstacles),
+                               '--seed', LaunchConfiguration('obstacle_seed').perform(context)],
+                    output='screen',
+                ))
+            else:
+                print(f'random_obstacles: only for artc_lab.world, not {gz_world_name}; none spawned')
 
         return [
             robot_state_publisher_node,
@@ -994,6 +1009,8 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_wrist_camera', default_value='true', description='Bridge (sim) / launch orbbec_camera (real, ros-humble-orbbec-camera) for the wrist-mounted Orbbec Gemini 2. Mesh stays the D435i+stand placeholder.'),
         DeclareLaunchArgument('wrist_camera_serial', default_value='', description='real hardware only: wrist camera Gemini 2 serial number (only needed if multiple Orbbec devices are ever present at once)'),
         DeclareLaunchArgument('enable_hipnuc_imu', default_value='true', description='Bridge the gz-sim IMU sensor for the HiPNUC HI14R3-232-000 (mounted on extras_link). Sim only for now -- real hardware driver not wired yet.'),
+        DeclareLaunchArgument('random_obstacles', default_value='0', description="Sim, artc_lab only: spawn this many random small boxes in the room's open area (spawn_obstacles.py), for collision avoidance tests"),
+        DeclareLaunchArgument('obstacle_seed', default_value='-1', description='Seed for random_obstacles; -1 = a new layout every launch (the seed used is printed)'),
         DeclareLaunchArgument('publish_odom_tf', default_value='true', description='Publish odom -> base_link from the base (sim: ground truth, real: Ranger wheel odometry). false when ranger_xarm6_navigation odometry.launch.py (EKF) owns it.'),
         DeclareLaunchArgument('enable_livox_lidar', default_value='true', description='Bridge the gz-sim gpu_lidar sensor (sim) or launch livox_ros_driver2 directly (sim:=false) for the Livox Mid-360 (mounted on extras_link).'),
         OpaqueFunction(function=launch_setup),
