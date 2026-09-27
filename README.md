@@ -11,7 +11,7 @@ Application code (e.g. [wbcc_mm](https://github.com/artc-asr/whole_body_complian
 | `ranger_xarm6_description` | Combined description + bringup launch. Joins the base and arm through a fixed mount transform; `ranger_xarm6.launch.py` supports both Gazebo Harmonic simulation and real hardware (`sim:=true/false`). |
 | `ranger_xarm6_moveit_config` | MoveIt 2 config: the base as `base_x/y/theta` joints (crab and spin never mixed), the arm, and `whole_body`. |
 | `ranger_xarm6_manipulation` | MoveIt-based base + arm control (sequential or whole-body), `MoveToGoal` action. See its [README](ranger_xarm6_manipulation/README.md). |
-| `ranger_xarm6_navigation` | Odometry (EKF over wheel odometry + the Mid-360's IMU) and FAST-LIO2 3D mapping; localization and Nav2 to follow. See its [README](ranger_xarm6_navigation/README.md). |
+| `ranger_xarm6_navigation` | Odometry (EKF over wheel odometry + the Mid-360's IMU), FAST-LIO2 3D mapping with the front D435i's low obstacles, the 2D grid, and Nav2 (lidar + front D435i costmaps, collision monitor); a localizer is still to come. See its [README](ranger_xarm6_navigation/README.md). |
 | `ranger_mini_v3_description` | Vendored — missing from upstream `ranger_ros2` for ROS 2 Humble at the time this was ported. |
 | `xarm_ros2` (submodule) | UFACTORY xArm6 description, ros2_control, and driver packages. |
 | `westonrobot_ranger_ros2` (submodule) | Ranger Mini 3.0 real-hardware bringup/driver. |
@@ -91,34 +91,372 @@ source install/setup.bash
 >
 > **Note:** `gz_ros2_control_demos`/`gz_ros2_control_tests`/`ign_ros2_control`/`ign_ros2_control_demos` (siblings of `gz_ros2_control` inside that same submodule) are skipped too — only `gz_ros2_control` itself is needed here (see the Contents table above for why it's built from source at all), and the demo/test packages pull in extra controller deps (`control_toolbox`, `ackermann_steering_controller`, `mecanum_drive_controller`, `tricycle_controller`, ...) this repo doesn't otherwise need.
 
-## Quick Start
+## Usage guide
+
+Everything below is for the simulation unless it says otherwise; the
+real-robot differences are at the end of each part. The robot's ROS
+namespace and frame prefix is `robot_a` throughout (`robot_id` launch
+argument). Tested in sim on 2026-09-27; real hardware is untested.
+
+### 0. Every terminal
 
 ```bash
-# Simulation (Gazebo Harmonic + robot)
-ros2 launch ranger_xarm6_description ranger_xarm6.launch.py sim:=true
-
-# Real hardware
-ros2 launch ranger_xarm6_description ranger_xarm6.launch.py sim:=false
+cd ~/Worksplace/artc_ranger_xarm6 && source install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ```
 
-Then, optionally, a controller on top (MoveIt 2 planning for base + arm, sequential or whole-body; see [`ranger_xarm6_manipulation`](ranger_xarm6_manipulation/README.md)):
+Use the same `RMW_IMPLEMENTATION` in **every** terminal of a session
+(mixing them breaks communication). Cyclone is recommended: with the
+default FastDDS, Nav2 hung at startup in 2 of 8 launches (a lost
+lifecycle response), with Cyclone 0 of 8. If a FastDDS session misbehaves
+after something crashed, run `fastdds shm clean`.
+
+After pulling changes, rebuild what changed, e.g.
+`colcon build --packages-select ranger_xarm6_description ranger_xarm6_navigation ranger_xarm6_manipulation ranger_xarm6_moveit_config`.
+
+### 1. Start the robot
+
+**Terminal 1** (keep it running for everything below):
 
 ```bash
-ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
-ros2 launch ranger_xarm6_manipulation control.launch.py controller:=moveit_sequential   # or moveit_whole_body; --show-args lists them
+ros2 launch ranger_xarm6_description ranger_xarm6.launch.py \
+  world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
 ```
 
-Navigation (see [`ranger_xarm6_navigation`](ranger_xarm6_navigation/README.md)): odometry from the EKF instead of the base, and a FAST-LIO2 mapping session:
+- Gazebo runs headless (`gz_gui:=true` shows its window); RViz shows the
+  room, the robot and its sensors. Mapping uses this RViz; Nav2 and
+  MoveIt each bring their own, so add `run_rviz:=false` for those.
+- `x y yaw` is the spawn pose: `0.94 4.35 -1.5708` is the robot's home
+  spot in `artc_lab` (the maps in this guide assume it).
+- **Random obstacles** for collision-avoidance tests: add
+  `random_obstacles:=5` (and `obstacle_seed:=7` to get the same layout
+  again; the seed used is printed in this terminal). They go in the
+  room's open area (the red area of `world_plan_view.png`), so they're not
+  in the map, and they're drawn in RViz. Re-roll or remove them any time:
+
+  ```bash
+  ros2 run ranger_xarm6_description spawn_obstacles.py --count 5          # a new layout
+  ros2 run ranger_xarm6_description spawn_obstacles.py --count 5 --seed 7 # that layout again
+  ros2 run ranger_xarm6_description spawn_obstacles.py --clear
+  ```
+
+- **Park the arm before driving** (`stow` or `home`, see section 4): the
+  base's footprint, which Nav2 and the collision monitor use, covers the
+  arm only in those poses.
+- Drive by hand (any time the base isn't under Nav2 or MoveIt):
+  `ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/robot_a/cmd_vel`.
+
+Real robot: `sim:=false robot_ip:=<xArm IP> can_device:=can0
+fixed_cam1_serial:=<front D435i serial> fixed_cam2_serial:=<rear>` instead
+of the world/spawn arguments, plus `publish_odom_tf:=false` when the EKF
+runs (section 2).
+
+### 2. Mapping
+
+Builds the map that navigation uses: a 3D point cloud from FAST-LIO2 (the
+Mid-360 lidar + its IMU), plus the front RealSense's low obstacles, then
+a 2D grid from both.
+
+**In sim you can skip this** if you have `~/ranger_xarm6_maps/artc_lab.*`
+(the lab's map; it lives on the computer that made it, not in this repo:
+copy it over, or map once with the steps below and `map:=~/ranger_xarm6_maps/artc_lab.pcd`).
+Map again for a new world or layout.
+
+1. Terminal 1: the robot (section 1), **without** `random_obstacles`
+   (anything present while mapping ends up in the map).
+2. Terminal 2, start mapping (pick the file name):
+
+   ```bash
+   ros2 launch ranger_xarm6_navigation mapping.launch.py map:=~/ranger_xarm6_maps/lab.pcd
+   ```
+
+3. Terminal 3, drive the robot round the room with teleop (above).
+   - Slowly, and ramp speed up and down (no instant full-speed starts).
+   - Arm parked. An arm reaching out while mapping gets mapped.
+   - Point the front camera at low things (boxes, chair legs, bins): the
+     lidar can't see what's low and close, the camera records it.
+   - Finish where you started (a closed loop keeps the map consistent).
+   - To watch the map grow, add a PointCloud2 display on
+     `/robot_a/fast_lio/laser_map` in terminal 1's RViz.
+4. Save the 3D map, then stop mapping (Ctrl-C in terminal 2; the low
+   obstacles are written on exit):
+
+   ```bash
+   ros2 service call /robot_a/map_save std_srvs/srv/Trigger
+   ```
+
+   Result: `lab.pcd` (lidar map) and `lab_depth.pcd` (camera's low obstacles).
+5. Make the 2D grid for Nav2:
+
+   ```bash
+   ros2 run ranger_xarm6_navigation pcd_to_grid.py ~/ranger_xarm6_maps/lab.pcd \
+     --origin 0.917 4.177 0.793 1.5708
+   ```
+
+   Result: `lab.pgm` + `lab.yaml`. `--origin` is where the lidar's IMU
+   was when mapping started, in the map frame (x y z yaw, z = its height
+   above the floor). The values above are for the sim's home spawn; for
+   another spawn, see [2D grid](ranger_xarm6_navigation/README.md#2d-grid).
+   Open `lab.pgm` in any image viewer to check it: black = obstacle,
+   white = free, grey = unknown.
+
+Real robot: the robot with `publish_odom_tf:=false`, the EKF, then the
+same steps with `use_sim_time:=false`:
 
 ```bash
-ros2 launch ranger_xarm6_description ranger_xarm6.launch.py publish_odom_tf:=false world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
-ros2 launch ranger_xarm6_navigation odometry.launch.py x:=0.94 y:=4.35 yaw:=-1.5708
-ros2 launch ranger_xarm6_navigation mapping.launch.py map:=~/ranger_xarm6_maps/lab.pcd
-# drive around (arm stowed), then
-ros2 service call /robot_a/map_save std_srvs/srv/Trigger
+ros2 launch ranger_xarm6_navigation odometry.launch.py use_sim_time:=false
+ros2 launch ranger_xarm6_navigation mapping.launch.py use_sim_time:=false map:=~/ranger_xarm6_maps/lab.pcd
 ```
 
-Either way the arm is exposed as an `arm_velocity_controller` joint group, so downstream control code drives it identically in sim or on hardware. Base drive on real hardware isn't wired up yet (`ranger_bringup`/`ranger_ros2`, vendored, untested); in simulation it's driven by `ranger_xarm6_description/scripts/base_pose_publisher.py`, a kinematic (not physics-based) stand-in that integrates `cmd_vel` and teleports the Gazebo entity, since Ranger's wheels have no `ros2_control` command interface.
+For the grid, `--origin 0 0 <IMU height above the floor> 0` makes the map
+frame where mapping started. The Mid-360 must be PTP time-synced with the
+computer.
+
+### 3. Navigation (Nav2)
+
+Drives the base to a goal on the map, avoiding what the lidar and the
+front RealSense see on the way.
+
+```bash
+# Terminal 1: the robot (section 1), e.g. with run_rviz:=false random_obstacles:=5
+# Terminal 2:
+ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_maps/artc_lab.yaml
+```
+
+Wait until terminal 2 has printed `Managed nodes are active` **twice**
+(about 10-20 s). Then, in its RViz:
+
+- **2D Goal Pose** (toolbar): click where the robot should go and drag
+  the arrow for the direction it should face.
+- What you see: the map, the global costmap and local costmap (obstacles
+  and their inflation), the planned path, the robot, the room and any
+  spawned boxes, and a red outline: the footprint the collision monitor
+  checks.
+
+From a terminal (coordinates in the map frame; in sim = Gazebo's world,
+the room is x 0..10, y 0..5.2; orientation `z, w` = sin, cos of half the
+heading):
+
+```bash
+ros2 action send_goal /robot_a/navigate_to_pose nav2_msgs/action/NavigateToPose \
+  "{pose: {header: {frame_id: robot_a_map}, pose: {position: {x: 7.5, y: 2.5}, orientation: {z: 0.0, w: 1.0}}}}"
+```
+
+Headings: `{z: 0.0, w: 1.0}` +x (east), `{z: 0.707, w: 0.707}` +y,
+`{z: 1.0, w: 0.0}` -x, `{z: -0.707, w: 0.707}` -y. Ctrl-C the command to
+cancel the goal.
+
+How it behaves:
+- The base spins in place towards the path, drives forward along it
+  (never backwards, never sideways), then spins to the goal heading; 0.3
+  m/s, 0.4 rad/s; the goal counts as reached within 10 cm / 6 deg.
+- Obstacles not in the map are avoided: the lidar sees tall ones from
+  far, the front RealSense low ones within 3 m ahead.
+- The **collision monitor** slows and stops the base on its own when a
+  command would hit something within 1.2 s, whatever Nav2 thinks.
+- Keep goals ~0.7 m from obstacles: the base turns in place and needs
+  the room. A goal it can't turn at, or that overlaps an obstacle,
+  **aborts** rather than hitting something; send another goal.
+- Don't send a MoveIt goal (section 4) while a Nav2 goal runs: both drive
+  the base.
+
+Real robot: not yet. Navigation needs a localizer (map -> odom) that
+isn't built; in sim a fixed map -> odom stands in, since the sim's odom
+is exact.
+
+More: [ranger_xarm6_navigation/README.md](ranger_xarm6_navigation/README.md)
+(costmaps, collision monitor, test results, known gaps).
+
+### 4. Arm and base with MoveIt
+
+`ranger_xarm6_manipulation` moves the arm, the base, or both, planned by
+MoveIt with collision checking against the room (tables, walls, cupboard).
+One action does everything: `/robot_a/mobile_manipulation/move_to_goal`.
+
+```bash
+# Terminal 1: the robot (section 1) with run_rviz:=false
+# Terminal 2 (MoveIt + its RViz):
+ros2 launch ranger_xarm6_manipulation control.launch.py controller:=moveit_sequential
+#   or controller:=moveit_whole_body  (only sets the default mode; each goal can pick)
+```
+
+Wait for `Arm named states: [...]` in terminal 2. Things to know:
+
+- The arm is mounted at the **back** of the base, facing backwards: it
+  reaches things **behind** the robot (-x of `robot_a_base_link`). To
+  work at a table, the robot's back faces the table.
+- The base either **crabs** (moves in any direction without turning) or
+  **spins** in place, never both at once.
+- **Sequential** (`mode: 1`): arm to a safe pose (`stow`) -> base crabs to
+  x, y -> base spins to theta -> arm to its goal. One thing at a time.
+- **Whole body** (`mode: 2`): base spins to theta first if needed, then
+  the base crabs and the arm moves **together** in one plan.
+- Named arm poses: `home` (all joints 0), `stow` (folded low behind the
+  sensor tower, for driving).
+- Coordinates are in `robot_a_odom` (in sim = the room/Gazebo frame) or
+  `robot_a_base_link` (relative to where the base **ends up**).
+- `-f` on `ros2 action send_goal` prints progress (which stage runs);
+  Ctrl-C cancels.
+
+#### 4.1 Sequential examples
+
+Drive to a spot, then put the arm in a named pose:
+
+```bash
+ros2 action send_goal -f /robot_a/mobile_manipulation/move_to_goal ranger_xarm6_manipulation/action/MoveToGoal \
+  "{mode: 1, move_base: true, base_goal: {x: 3.2, y: 2.6, theta: 1.5708}, move_arm: true, arm_named_goal: home}"
+```
+
+Only the arm (the base stays): `{mode: 1, move_arm: true, arm_named_goal: stow}`.
+Only the base: `{mode: 1, move_base: true, base_goal: {x: 3.2, y: 2.6, theta: 0.0}}`
+(the arm stows first; `transit_state: home` to carry it in `home` instead).
+Slower: add `velocity_scaling: 0.1` (0-1; default 0.3).
+
+#### 4.2 Moving to a new pose (not a named one)
+
+Give the gripper's target pose (`link_tcp`, the point between the
+fingertips) as `arm_pose_goal`. MoveIt finds the arm joints for it (IK),
+checks collisions, and plans.
+
+Position: where the fingertips should be. Orientation: a quaternion; for
+the gripper pointing straight **down**:
+
+| Gripper down, rotated about vertical by | orientation `{x, y, z, w}` |
+|---|---|
+| 0 deg | `{x: 1.0, y: 0.0, z: 0.0, w: 0.0}` |
+| 90 deg | `{x: 0.707, y: 0.707, z: 0.0, w: 0.0}` |
+| 180 deg | `{x: 0.0, y: 1.0, z: 0.0, w: 0.0}` |
+| -90 deg | `{x: 0.707, y: -0.707, z: 0.0, w: 0.0}` |
+
+Other orientations: `python3 -c "from tf_transformations import
+quaternion_from_euler as q; import math; print(q(math.pi, 0, math.radians(45)))"`
+(roll, pitch, yaw -> x, y, z, w).
+
+**Relative to the base** (e.g. 10 cm lower than now). Read where the
+gripper is, then send a changed pose:
+
+```bash
+ros2 run tf2_ros tf2_echo robot_a_base_link robot_a_link_tcp     # Translation = x y z now
+ros2 action send_goal -f /robot_a/mobile_manipulation/move_to_goal ranger_xarm6_manipulation/action/MoveToGoal \
+  "{mode: 1, move_arm: true, arm_pose_goal: {header: {frame_id: robot_a_base_link},
+    pose: {position: {x: -0.43, y: 0.0, z: -0.20}, orientation: {x: 0.0, y: 1.0, z: 0.0, w: 0.0}}}}"
+```
+
+**In the room** (`robot_a_odom`), e.g. 5 cm above `cube_4` on the
+north-east table (at 7.4, 4.12; tabletop 0.75 m), with the base put
+where the arm reaches it, back to the table (whole body, section 4.3):
+
+```bash
+ros2 action send_goal -f /robot_a/mobile_manipulation/move_to_goal ranger_xarm6_manipulation/action/MoveToGoal \
+  "{mode: 2, move_base: true, base_goal: {x: 7.4, y: 3.58, theta: -1.5708},
+    move_arm: true, arm_pose_goal: {header: {frame_id: robot_a_odom},
+    pose: {position: {x: 7.4, y: 4.12, z: 0.85}, orientation: {x: 0.0, y: 1.0, z: 0.0, w: 0.0}}}}"
+```
+
+To find coordinates: in sim, the world file
+(`ranger_xarm6_description/worlds/artc_lab.world`; `generate_artc_lab.py`
+lists the tables and cubes) or the spawn log of random obstacles; for
+anything with a TF frame, `ros2 run tf2_ros tf2_echo robot_a_odom <frame>`.
+Reach: with the gripper pointing down just above the tables, about 0.4 m
+horizontally from the arm's base, i.e. the table edge must be close
+behind the robot (the base stops 0.54 m from `cube_4` above).
+
+If a goal fails, the message says why: `goal state is invalid ...: link_X
+<-> world/table_...` = that pose would put the robot into the table;
+`no IK solution` = out of reach or an impossible orientation.
+
+**In RViz** (terminal 2's): in the MotionPlanning panel pick the
+**Planning Group** `arm` (or `whole_body`), drag the interactive marker
+at the gripper to the new pose, **Plan**, check the preview, **Execute**.
+
+#### 4.3 Whole-body examples
+
+Base and arm together, base pose given (above). **Base pose chosen for
+you**: leave `move_base` out; the coordinator finds the nearest base
+position, at the **current heading**, from which the arm reaches the pose.
+It works when the robot's back already faces the target, e.g. after the
+goal above, 5 cm above `cube_3`:
+
+```bash
+ros2 action send_goal -f /robot_a/mobile_manipulation/move_to_goal ranger_xarm6_manipulation/action/MoveToGoal \
+  "{mode: 2, move_arm: true, arm_pose_goal: {header: {frame_id: robot_a_odom},
+    pose: {position: {x: 6.5, y: 4.10, z: 0.85}, orientation: {x: 0.0, y: 1.0, z: 0.0, w: 0.0}}}}"
+```
+
+(If the robot faces the table instead, this fails with the base in the
+table: give `move_base: true` and a `base_goal` with its back to it.)
+
+#### 4.4 Saving a new named pose
+
+To reuse a pose by name (like `home`, `stow`):
+
+1. Move the arm there (a pose goal, or RViz drag + Execute).
+2. Print it as an SRDF entry:
+
+   ```bash
+   ros2 run ranger_xarm6_manipulation arm_joints.py pick_ready
+   ```
+
+   ```xml
+     <group_state name="pick_ready" group="arm">
+       <joint name="${prefix}joint1" value="0.6064" />
+       ...
+     </group_state>
+   ```
+
+3. Paste it into `ranger_xarm6_moveit_config/srdf/ranger_xarm6.srdf.xacro`,
+   next to `home` and `stow`.
+4. `colcon build --packages-select ranger_xarm6_moveit_config`, restart
+   terminal 2 (it prints `Arm named states: ['home', 'pick_ready', 'stow']`).
+5. Use it: `{mode: 1, move_arm: true, arm_named_goal: pick_ready}`, or as
+   `transit_state`.
+
+A named pose is joint angles, so it's the same arm shape wherever the
+base is; a pose goal is a place in the room.
+
+Real robot: the same, with `use_sim_time:=false` on `control.launch.py`.
+Untested on hardware; the planning scene there has only the floor (no
+tables) until perception exists.
+
+### 5. Gripper
+
+```bash
+ros2 run ranger_xarm6_manipulation gripper.py open
+ros2 run ranger_xarm6_manipulation gripper.py close
+ros2 run ranger_xarm6_manipulation gripper.py 0.4        # partly: 0 (open) .. 0.85 (closed)
+```
+
+It prints where the fingers stopped: `drive_joint 0.831 (target 0.85)`;
+`stopped short: holding something` when an object stops them. Works with
+or without MoveIt running (the gripper has its own controller, not
+MoveIt's).
+
+The raw topic, for your own code (`std_msgs/Float64MultiArray`, one
+value in rad):
+
+```bash
+ros2 topic pub -w 1 -t 3 /robot_a/gripper_position_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.85]}"
+```
+
+(`-w 1 -t 3`: wait for the controller and send 3 times; a single
+`--once` can be lost.)
+
+Pick sequence (the steps; the grasp itself hasn't been tuned/tested in
+sim): `gripper.py open` -> pose goal 5 cm above the cube (4.2) -> pose
+goal lowering the fingertips to around the cube's middle (a 5 cm cube on
+a 0.75 m table: z ~0.78) -> `gripper.py close` (should report `holding
+something`) -> pose goal back up -> drive.
+
+### 6. Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| Nav2 never prints `Managed nodes are active` twice | DDS startup race: Ctrl-C, relaunch; use Cyclone (section 0); `fastdds shm clean` after crashes |
+| Nav2 goal aborts next to an obstacle | no room to turn in place, or the goal overlaps an obstacle: send a goal further away |
+| `goal state is invalid ... <-> world/...` (MoveIt) | that pose puts the robot into something: other base pose / heading |
+| MoveIt's RViz Plan/Execute does nothing (waits ~60 s) | the MotionPlanning panel's **Move Group Namespace** must be `/robot_a` (Displays -> MotionPlanning) |
+| Gripper doesn't move | use `gripper.py`; check `ros2 control list_controllers -c /robot_a/controller_manager` shows `gripper_position_controller` active |
+| Robot drifts / wrong pose after a crash in sim | restart terminal 1 (and everything on top) |
 
 ## Using this repo from another workspace
 

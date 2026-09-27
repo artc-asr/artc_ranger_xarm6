@@ -14,6 +14,8 @@ install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 install(PROGRAMS
   scripts/base_trajectory_server.py
   scripts/mobile_manipulation_coordinator.py
+  scripts/gripper.py
+  scripts/arm_joints.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
