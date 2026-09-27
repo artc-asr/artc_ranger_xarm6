@@ -21,3 +21,7 @@
 	path = FAST_LIO
 	url = https://github.com/hku-mars/FAST_LIO.git
 	branch = ROS2
+[submodule "BehaviorTree.ROS2"]
+	path = BehaviorTree.ROS2
+	url = https://github.com/BehaviorTree/BehaviorTree.ROS2.git
+	branch = humble
