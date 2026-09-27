@@ -29,6 +29,20 @@ Feedback comes from TF (odom -> base_link): base_pose_publisher.py in
 sim, the Ranger driver's odometry on hardware. Only one node should
 publish cmd_vel at a time: stop wbc.py (or anything else driving the
 base) while this runs.
+
+Collision monitor: MoveIt checks a plan only against its planning scene
+(the room's static models), not against what the sensors see. So when
+ranger_xarm6_navigation's collision_monitor is running (it subscribes
+to cmd_vel_smoothed, Nav2's velocity smoother output), commands go
+there instead of straight to cmd_vel, and it slows or stops the base
+like any Nav2 command. Parameter collision_monitor: 'auto' (that, checked
+at the start of each trajectory), 'always' (only there: the base won't
+move without the monitor), 'never' (straight to cmd_vel). Nav2's smoother
+publishes there too, while a Nav2 goal runs and for up to its
+velocity_timeout after (ramping to zero): a trajectory routed there waits
+until that topic has been quiet for 0.3 s (up to 3 s), else the two
+interleave and the base can't track (a spin right after a Nav2 goal
+failed that way in sim). Don't run a Nav2 goal and a MoveIt goal at once.
 """
 import bisect
 import math
@@ -81,6 +95,13 @@ class BaseTrajectoryServer(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.monitored_pub = self.create_publisher(Twist, p('monitored_cmd_vel_topic', 'cmd_vel_smoothed').value, 10)
+        p('collision_monitor', 'auto')
+        self.out_pub = self.cmd_pub
+        self._last_monitored_msg = 0.0
+        self.create_subscription(Twist, self.monitored_pub.topic_name,
+                                 lambda _: setattr(self, '_last_monitored_msg', time.monotonic()), 10,
+                                 callback_group=ReentrantCallbackGroup())
         self._server = ActionServer(
             self, FollowJointTrajectory, 'base_trajectory_controller/follow_joint_trajectory',
             execute_callback=self._execute,
@@ -100,13 +121,32 @@ class BaseTrajectoryServer(Node):
         yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
         return t.transform.translation.x, t.transform.translation.y, yaw
 
+    def _output(self):
+        """The publisher for this trajectory: through collision_monitor or not (see top)."""
+        choice = self.get_parameter('collision_monitor').value
+        # Another node listening there (this one listens too, for _wait_quiet).
+        monitored = any(i.node_name != self.get_name() or i.node_namespace != self.get_namespace()
+                        for i in self.get_subscriptions_info_by_topic(self.monitored_pub.topic_name))
+        if choice == 'always' or (choice == 'auto' and monitored):
+            if not monitored:
+                self.get_logger().warn('collision_monitor: always, but nothing subscribes to '
+                                       f'{self.monitored_pub.topic_name}: the base will not move')
+            return self.monitored_pub
+        return self.cmd_pub
+
+    def _wait_quiet(self, quiet, timeout):
+        """Until nothing (else) has published on the monitored topic for `quiet` s."""
+        end = time.monotonic() + timeout
+        while time.monotonic() - self._last_monitored_msg < quiet and time.monotonic() < end:
+            time.sleep(0.05)
+
     def _now(self):
         return self.get_clock().now().nanoseconds * 1e-9
 
     def _send(self, vx=0.0, vy=0.0, wz=0.0):
         msg = Twist()
         msg.linear.x, msg.linear.y, msg.angular.z = vx, vy, wz
-        self.cmd_pub.publish(msg)
+        self.out_pub.publish(msg)
 
     def _stop(self, duration):
         end = time.monotonic() + duration
@@ -161,6 +201,9 @@ class BaseTrajectoryServer(Node):
         self._busy = True
         result = FollowJointTrajectory.Result()
         traj = goal_handle.request.trajectory
+        self.out_pub = self._output()
+        if self.out_pub is self.monitored_pub:
+            self._wait_quiet(0.3, 3.0)
         try:
             mode = self._classify(traj)
             start_pose = self._pose()
