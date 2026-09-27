@@ -23,92 +23,114 @@ localization (`map -> odom`).
 
 ## Quick start
 
-Build (once, and after pulling):
+### 0. Build, and set up each terminal
 
 ```bash
 cd ~/Worksplace/artc_ranger_xarm6
 colcon build --symlink-install --packages-select ranger_xarm6_description ranger_xarm6_navigation
-source install/setup.bash
 ```
 
-Every terminal below: `source install/setup.bash`. Recommended, in every
-terminal of a session (sim, Nav2, tools alike):
-`export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`. With the default FastDDS,
-Nav2 hung at startup in 2 of 8 sim launches (a lifecycle `change_state`
-response got lost); with Cyclone 8 of 8 came up. If a FastDDS session
-misbehaves after crashes, `fastdds shm clean` removes its stale shared
-memory.
-
-**1. Map a room (sim).**
+In **every** terminal below:
 
 ```bash
-# T1: the robot in the lab (RViz off; Gazebo headless)
-ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false \
+cd ~/Worksplace/artc_ranger_xarm6 && source install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+```
+
+Cyclone is recommended: with the default FastDDS, Nav2 hung at startup in
+2 of 8 sim launches (a lost lifecycle response); with Cyclone, 8 of 8 came
+up. Use the same setting in every terminal of a session. If a FastDDS
+session misbehaves after crashes, `fastdds shm clean`.
+
+### 1. The sim (every step below starts with this)
+
+```bash
+ros2 launch ranger_xarm6_description ranger_xarm6.launch.py \
   world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
+```
+
+The lab, the robot at its home spot, and an RViz that shows the room,
+the robot and its sensors. Add `run_rviz:=false` when Nav2's own RViz
+(step 4) is enough. Park the arm (`home` or `stow`) before driving.
+
+**Random obstacles** in the room's open area (the red area of
+`world_plan_view.png`; they're not in the map): add
+`random_obstacles:=5` (and `obstacle_seed:=7` to repeat a layout; the
+seed used is printed). They're drawn in both RViz views. Or at any time:
+
+```bash
+ros2 run ranger_xarm6_description spawn_obstacles.py --count 5          # a new layout
+ros2 run ranger_xarm6_description spawn_obstacles.py --count 5 --seed 7 # the same one again
+ros2 run ranger_xarm6_description spawn_obstacles.py --clear
+```
+
+Boxes 0.15-0.4 m wide, 0.1-0.5 m tall (some below what the lidar sees
+up close), at least 0.9 m apart.
+
+### 2. Map (skip in sim: `~/ranger_xarm6_maps/artc_lab.*` is done)
+
+Sim from step 1, **without** random obstacles (they'd be mapped). Then:
+
+```bash
 # T2: FAST-LIO2 + the front camera's low obstacles
 ros2 launch ranger_xarm6_navigation mapping.launch.py map:=~/ranger_xarm6_maps/lab.pcd
-# T3: drive, smoothly, arm parked, camera facing what's low (teleop, or Nav2 on an old map)
+# T3: drive slowly and smoothly round the room, camera facing what's low
 ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/robot_a/cmd_vel
-# when done: save the 3D map, then Ctrl-C T2 (writes lab_depth.pcd)
+# T4, when done: save the 3D map, then Ctrl-C T2 (it writes lab_depth.pcd on exit)
 ros2 service call /robot_a/map_save std_srvs/srv/Trigger
 ```
 
-**2. Make the 2D grid.** `--origin` is the IMU's pose when mapping
-started, in the map frame (see "2D grid" below; this one is for the
-spawn above):
+Watch the map grow in step 1's RViz (add a PointCloud2 display on
+`/robot_a/fast_lio/laser_map`). Close loops (come back past where you
+started) and avoid instant starts/stops.
+
+### 3. The 2D grid
 
 ```bash
 ros2 run ranger_xarm6_navigation pcd_to_grid.py ~/ranger_xarm6_maps/lab.pcd \
   --origin 0.917 4.177 0.793 1.5708
 ```
 
-**3. Navigate (sim).**
+Writes `lab.pgm` + `lab.yaml` (the lidar map + `lab_depth.pcd`'s low
+obstacles). `--origin` is where mapping started, as the Mid-360 IMU's
+pose in the map frame: the values above are for the sim's home spawn;
+see "2D grid" below for other starts.
+
+### 4. Navigate
 
 ```bash
-# T1 as above; T2:
-ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_maps/lab.yaml
+# T1: the sim (step 1), e.g. with random_obstacles:=5 run_rviz:=false
+# T2:
+ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_maps/artc_lab.yaml
 ```
 
-Wait for `Managed nodes are active` twice, then **2D Goal Pose** in RViz
-(the red outline is the footprint the collision monitor checks), or
-`ros2 action send_goal` (see "Navigation").
-**Random obstacles** (the red area of `world_plan_view.png`, not in the
-map): add `random_obstacles:=5` to the sim launch (`obstacle_seed:=7` for
-a layout you can repeat; the seed used is printed), or at any time:
+Wait for `Managed nodes are active` twice in T2, then **2D Goal Pose** in
+its RViz (the red outline is the footprint the collision monitor
+checks), or `ros2 action send_goal` (see "Navigation"). Keep goals ~0.7 m
+from obstacles: the base turns in place and needs the room; a goal
+without it aborts rather than hitting something.
+
+### 5. Real robot (untested on hardware)
 
 ```bash
-ros2 run ranger_xarm6_description spawn_obstacles.py --count 5          # new layout
-ros2 run ranger_xarm6_description spawn_obstacles.py --count 5 --seed 7 # the same one again
-ros2 run ranger_xarm6_description spawn_obstacles.py --clear
-```
-
-Boxes 0.15-0.4 m wide, 0.1-0.5 m tall (some below what the lidar sees up
-close), at least 0.9 m apart. Keep goals ~0.7 m from a box: the base
-turns in place and needs the room. One box by hand:
-
-```bash
-gz service -s /world/artc_lab/create --reqtype gz.msgs.EntityFactory --reptype gz.msgs.Boolean \
-  --timeout 5000 --req 'sdf: "<sdf version=\"1.9\"><model name=\"box\"><static>true</static><pose>3 3 0.075 0 0 0</pose><link name=\"l\"><collision name=\"c\"><geometry><box><size>0.3 0.3 0.15</size></box></geometry></collision><visual name=\"v\"><geometry><box><size>0.3 0.3 0.15</size></box></geometry></visual></link></model></sdf>"'
-```
-
-**4. Real robot** (untested on hardware). Wheel odometry + IMU through the
-EKF (so heights are right), `use_sim_time:=false`, no static map -> odom
-until the NDT localizer exists (odometry drift isn't corrected):
-
-```bash
+# T1: the robot (CAN, xArm, cameras) without its own odom TF
 ros2 launch ranger_xarm6_description ranger_xarm6.launch.py sim:=false publish_odom_tf:=false \
   robot_ip:=192.168.1.231 can_device:=can0 fixed_cam1_serial:=<front D435i serial>
+# T2: EKF odometry (wheels + Mid-360 IMU)
 ros2 launch ranger_xarm6_navigation odometry.launch.py use_sim_time:=false
+# T3: mapping, then steps 2-3 as in sim (teleop, map_save, Ctrl-C, pcd_to_grid)
 ros2 launch ranger_xarm6_navigation mapping.launch.py use_sim_time:=false map:=~/ranger_xarm6_maps/lab.pcd
 ```
 
-Check before driving: the Mid-360 is PTP-synced (or `imu_restamp`), the
-front camera's depth topic matches `front_depth.launch.py`'s default
-(`ros2 topic list | grep image_rect_raw`; override with
-`front_depth_image:=`/`front_depth_info:=`), the Ranger driver stops the
-base when `cmd_vel` stops coming (the collision monitor's last line of
-defence when Nav2 shuts itself down), and the first obstacle tests are
-slow, with a hand on the e-stop.
+For the grid, `--origin 0 0 <IMU height above the floor> 0` makes the
+map frame where mapping started. Navigation on hardware needs the NDT
+localizer (not built yet): the static map -> odom used in sim doesn't
+correct odometry drift. Check before driving: the Mid-360 is PTP-synced
+(or `imu_restamp`), the front camera's depth topic matches
+`front_depth.launch.py`'s default (`ros2 topic list | grep
+image_rect_raw`; override with `front_depth_image:=`/`front_depth_info:=`),
+the Ranger driver stops the base when `cmd_vel` stops coming, and the
+first tests are slow, with a hand on the e-stop.
 
 ## Sensors
 

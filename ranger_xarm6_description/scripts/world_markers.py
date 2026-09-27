@@ -16,6 +16,12 @@ come from gz-sim's /world/<name>/dynamic_pose/info (gz-transport,
 subscribed directly, same Python bindings as base_pose_publisher.py),
 matched to SDF models by name.
 
+Models added at runtime (not in the SDF: e.g. spawn_obstacles.py's
+boxes) are drawn too: every runtime_period s, gz-sim's scene/info is
+asked which models exist; the new ones' box/cylinder/sphere visuals are
+added at the pose they have then, and removed ones deleted. Models named
+in ignore_models (the robot) are left out.
+
 Markers are published in frame_id (the robot's odom frame): gz-sim's
 world origin and odom coincide, since base_pose_publisher.py starts
 odom->base_link at the spawn pose and teleports the gz entity to follow
@@ -23,6 +29,7 @@ it. Header stamps are left at zero so RViz always uses the latest TF
 rather than waiting on sim-time lookups.
 """
 import threading
+import time
 import xml.etree.ElementTree as ET
 
 import rclpy
@@ -32,7 +39,9 @@ from tf_transformations import euler_matrix, quaternion_from_matrix, quaternion_
 from visualization_msgs.msg import Marker, MarkerArray
 
 from gz.transport13 import Node as GzNode
+from gz.msgs10.empty_pb2 import Empty
 from gz.msgs10.pose_v_pb2 import Pose_V
+from gz.msgs10.scene_pb2 import Scene
 
 
 # Largest ground plane (m, either side) drawn as a floor; see module doc.
@@ -63,6 +72,8 @@ class WorldMarkers(Node):
         self.declare_parameter('world_file', '')
         self.declare_parameter('frame_id', 'odom')
         self.declare_parameter('rate', 10.0)  # [Hz] republish (dynamic models)
+        self.declare_parameter('runtime_period', 2.0)  # [s] check for runtime-added models; 0 = off
+        self.declare_parameter('ignore_models', [''])
 
         world_file = self.get_parameter('world_file').value
         self.frame_id = self.get_parameter('frame_id').value
@@ -100,10 +111,17 @@ class WorldMarkers(Node):
 
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.pub = self.create_publisher(MarkerArray, 'world_markers', latched)
+        self.sdf_models = set(self.models)
+        self.ignore = set(self.get_parameter('ignore_models').value) - {''}
+        self.next_id = next_id
+        self.deleted = []  # markers of removed runtime models, sent once as DELETE
+        self.gz_node = GzNode()
         if self.dynamic:
-            self.gz_node = GzNode()
             self.gz_node.subscribe(Pose_V, f'/world/{self.gz_world}/dynamic_pose/info', self.on_poses)
             self.create_timer(1.0 / self.get_parameter('rate').value, self.publish)
+        period = self.get_parameter('runtime_period').value
+        if period > 0:
+            threading.Thread(target=self.watch_runtime_models, args=(period,), daemon=True).start()
         self.publish()
         self.get_logger().info(
             f"{sum(len(p) for _, p in self.models.values())} markers from {len(self.models)} models "
@@ -148,6 +166,55 @@ class WorldMarkers(Node):
             return None
         return m
 
+    def watch_runtime_models(self, period):
+        """Add/remove markers for models gz-sim has that the SDF doesn't (own thread: requests block)."""
+        while rclpy.ok():
+            time.sleep(period)
+            ok, scene = self.gz_node.request(f'/world/{self.gz_world}/scene/info', Empty(), Empty, Scene, 2000)
+            if not ok:
+                continue
+            present = {m.name: m for m in scene.model if m.name not in self.sdf_models and m.name not in self.ignore}
+            changed = False
+            with self.lock:
+                for name in [n for n in self.models if n not in self.sdf_models and n not in present]:
+                    for marker, _ in self.models.pop(name)[1]:
+                        marker.action = Marker.DELETE
+                        self.deleted.append(marker)
+                    changed = True
+                for name, model in present.items():
+                    if name not in self.models:
+                        parts = self.runtime_parts(model)
+                        if parts:
+                            self.models[name] = gz_pose_matrix(model.pose), parts
+                            changed = True
+            if changed:
+                self.publish()
+
+    def runtime_parts(self, model):
+        parts = []
+        for link in model.link:
+            for visual in link.visual:
+                g, m = visual.geometry, Marker()
+                m.action = Marker.ADD
+                if g.HasField('box'):
+                    m.type = Marker.CUBE
+                    m.scale.x, m.scale.y, m.scale.z = g.box.size.x, g.box.size.y, g.box.size.z
+                elif g.HasField('cylinder'):
+                    m.type = Marker.CYLINDER
+                    m.scale.x = m.scale.y = 2 * g.cylinder.radius
+                    m.scale.z = g.cylinder.length
+                elif g.HasField('sphere'):
+                    m.type = Marker.SPHERE
+                    m.scale.x = m.scale.y = m.scale.z = 2 * g.sphere.radius
+                else:
+                    continue
+                c = visual.material.diffuse if visual.HasField('material') else None
+                m.color.r, m.color.g, m.color.b, m.color.a = (c.r, c.g, c.b, c.a or 1.0) if c else (0.7, 0.7, 0.7, 1.0)
+                m.ns, m.id = model.name, self.next_id
+                self.next_id += 1
+                parts.append((m, gz_pose_matrix(link.pose) @ gz_pose_matrix(visual.pose)))
+        return parts
+
     def on_poses(self, msg):
         with self.lock:
             for p in msg.pose:
@@ -160,6 +227,10 @@ class WorldMarkers(Node):
     def publish(self):
         out = MarkerArray()
         with self.lock:
+            for marker in self.deleted:
+                marker.header.frame_id = self.frame_id
+                out.markers.append(marker)
+            self.deleted = []
             for model_m, parts in self.models.values():
                 for marker, local_m in parts:
                     world_m = model_m @ local_m
@@ -170,6 +241,14 @@ class WorldMarkers(Node):
                     marker.pose.orientation.z, marker.pose.orientation.w = qz, qw
                     out.markers.append(marker)
         self.pub.publish(out)
+
+
+def gz_pose_matrix(p):
+    """gz.msgs.Pose -> 4x4 homogeneous matrix."""
+    q = p.orientation
+    m = quaternion_matrix([q.x, q.y, q.z, q.w]) if (q.x, q.y, q.z, q.w) != (0, 0, 0, 0) else quaternion_matrix([0, 0, 0, 1])
+    m[:3, 3] = [p.position.x, p.position.y, p.position.z]
+    return m
 
 
 def main():

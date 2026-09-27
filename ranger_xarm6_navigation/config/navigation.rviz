@@ -14,6 +14,13 @@ Visualization Manager:
       Plane Cell Count: 12
       Offset: {X: 5, Y: 2.6, Z: 0}
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: World (sim, incl. spawned obstacles)
+      Enabled: true
+      Topic:
+        Value: /robot_a/world_markers
+        Durability Policy: Transient Local
+      Value: true
     - Class: rviz_default_plugins/Map
       Name: Map
       Enabled: true

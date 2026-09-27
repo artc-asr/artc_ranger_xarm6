@@ -495,6 +495,7 @@ def launch_setup(context, *args, **kwargs):
             parameters=[{
                 'world_file': world_path,
                 'frame_id': f'{prefix}odom',
+                'ignore_models': [robot_id or 'ranger_xarm6'],
                 'use_sim_time': gazebo,
             }],
             output='screen',
