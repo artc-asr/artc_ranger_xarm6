@@ -1,19 +1,21 @@
-# base_trajectory_server.py tuning. Conservative defaults for driving with
-# the arm stowed; the Ranger Mini 3 driver itself allows 1.5 m/s and
-# 4.8 rad/s (westonrobot_ranger_ros2 RangerMiniV2Params, used for V3).
-# odom_frame/base_frame are set by launch/manipulation.launch.py.
+# base_trajectory_server.py tuning. Speeds along a plan come from
+# MoveIt's time parameterization (ranger_xarm6_moveit_config's
+# joint_limits.yaml); these only clamp the tracking commands. The Ranger
+# Mini 3 driver itself clamps to 2.7 m/s and 0.785 rad/s spinning
+# (westonrobot_ranger_ros2 RangerMiniV2Params, used for V3).
+# odom_frame/base_frame are set by launch/control.launch.py.
 /**:
   ros__parameters:
-    max_linear_speed: 0.3        # m/s
-    max_angular_speed: 0.5       # rad/s
-    linear_acceleration: 0.3     # m/s^2
-    angular_acceleration: 0.8    # rad/s^2
-    kp_linear: 1.5               # 1/s
+    max_linear_speed: 1.0        # m/s; plans reach 1.41 diagonally at scaling 1.0
+    max_angular_speed: 0.78      # rad/s
+    kp_linear: 1.5               # 1/s, position correction
     kp_angular: 2.0              # 1/s
-    xy_tolerance: 0.02           # m
-    yaw_tolerance: 0.02          # rad
-    straight_tolerance: 0.0349   # rad (2 deg): closer to straight -> linear.y = 0 exactly
-    mode_switch_pause: 0.5       # s stopped between translate and rotate (wheel re-steer)
-    max_passes: 3
+    xy_tolerance: 0.02           # m, at the end
+    yaw_tolerance: 0.02          # rad, at the end
+    path_xy_tolerance: 0.3       # m off the plan while tracking -> abort
+    path_yaw_tolerance: 0.3      # rad
+    goal_time_tolerance: 3.0     # s after the plan's end to reach tolerance
+    mode_switch_pause: 0.5       # s stopped after each trajectory (wheel re-steer)
+    still_xy: 0.005              # m in total: below = not translating
+    still_yaw: 0.01              # rad in total: below = not rotating
     control_rate: 20.0           # Hz
-    timeout_margin: 3.0          # x nominal segment duration

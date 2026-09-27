@@ -15,7 +15,8 @@ Ackermann/spin OR crab, never both at once), then:
   1. Publishes the result as the live odom->base_link TF (dynamic, not
      static -- this is now a genuinely moving frame), so wbc.py's
      TransformListener-based update_robot_state() sees it every tick.
-  2. Teleports the Gazebo entity to match, via the gz-transport Python
+  2. Teleports the Gazebo entity to match (only when needed, see
+     _gz_teleport_loop), via the gz-transport Python
      API directly (not the 'gz service' CLI subprocess wbc_visualize.py
      used to shell out to for the one-off Initial Position teleport --
      that's ~fine at one call per button click, far too slow to call
@@ -31,6 +32,21 @@ without the internal wheel-level control. Good enough to let whole-body
 path-following actually move the base in sim; not a substitute for
 either real physics-based simulation or the real driver on hardware.
 
+Also publishes simulated wheel odometry (nav_msgs/Odometry on 'odom',
+at tf_rate), standing in for the real ranger_base driver's: the base's
+actual motion each tick with a fixed scale error and white noise, so
+its integrated pose drifts from the TF above the way wheel odometry
+drifts from the truth. Same format as the real driver: frame_id odom,
+child base_link, twist in base_link, covariances all zero, no TF (the
+TF above stays ground truth). The true pose and twist go out the same
+way on 'ground_truth/odom' (sim_livox_imu.py computes the simulated
+Mid-360 IMU from it: teleporting gives the links no velocity, so
+Gazebo's IMUs can't sense the base's motion).
+
+With publish_tf false (ranger_xarm6.launch.py publish_odom_tf:=false),
+the TF is left to something else, e.g. ranger_xarm6_navigation's EKF;
+everything else here runs the same.
+
 Also still the sole owner of odom->base_link for the "Initial Position"
 button's teleport (set_base_pose topic) -- see git history on this file
 for why a second TF publisher for the same edge is a race, and why
@@ -39,17 +55,20 @@ moot now that this publishes a normal dynamic transform instead of a
 static one, but the single-owner principle still holds).
 """
 import math
+import random
 import threading
 import time
 
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose2D, TransformStamped, Twist
+from nav_msgs.msg import Odometry
 from tf2_ros import TransformBroadcaster
 from tf_transformations import quaternion_from_euler
 
 from gz.transport13 import Node as GzNode
 from gz.msgs10 import pose_pb2, boolean_pb2, scene_pb2, empty_pb2
+from gz.msgs10.pose_v_pb2 import Pose_V
 
 
 class BasePosePublisher(Node):
@@ -61,6 +80,10 @@ class BasePosePublisher(Node):
         self.declare_parameter('yaw', 0.0)
         self.declare_parameter('frame_id', 'odom')
         self.declare_parameter('child_frame_id', 'base_link')
+        # false when something else owns odom -> base_link (e.g. the
+        # EKF in ranger_xarm6_navigation); the base still moves the same,
+        # and ground_truth/odom still carries the true pose.
+        self.declare_parameter('publish_tf', True)
         # Gazebo teleport target -- must match how the entity was spawned
         # (see ranger_xarm6.launch.py's spawn_entity_node '-name' arg) and
         # which world it lives in (see tested_world.world's world name,
@@ -85,13 +108,39 @@ class BasePosePublisher(Node):
         self.declare_parameter('tf_rate', 50.0)         # [Hz] cmd_vel integration + TF publish
         self.declare_parameter('gz_teleport_rate', 30.0)  # [Hz] Gazebo entity teleport (own thread)
         self.declare_parameter('cmd_vel_timeout', 0.5)    # [s] stale cmd_vel -> treat as zero
+        # While the commanded pose is unchanged, re-teleport only once the
+        # entity's x/y/yaw has drifted this far from it (see _gz_teleport_loop).
+        self.declare_parameter('gz_drift_tolerance', 0.003)        # [m]
+        self.declare_parameter('gz_drift_angle_tolerance', 0.005)  # [rad], yaw
+        # Simulated wheel odometry (see the module docstring). The scales
+        # are the systematic error (wheel radius, slip): measured =
+        # scale * actual. The noise is white, added to each moving axis
+        # only, so a parked base reads exactly zero and crab/spin keep
+        # angular.z / linear exactly zero, like the real driver.
+        self.declare_parameter('publish_odom', True)
+        self.declare_parameter('odom_topic', 'odom')
+        self.declare_parameter('odom_linear_scale', 1.02)
+        self.declare_parameter('odom_angular_scale', 0.97)
+        self.declare_parameter('odom_linear_noise', 0.01)    # [m/s] stddev
+        self.declare_parameter('odom_angular_noise', 0.01)   # [rad/s] stddev
+        self.declare_parameter('odom_noise_seed', 0)
+        self.declare_parameter('ground_truth_odom_topic', 'ground_truth/odom')
 
         self.frame_id = self.get_parameter('frame_id').value
         self.child_frame_id = self.get_parameter('child_frame_id').value
+        self.publish_tf = self.get_parameter('publish_tf').value
         self.gz_world = self.get_parameter('gz_world').value
         self.gz_entity_name = self.get_parameter('gz_entity_name').value
         self.cmd_vel_timeout = self.get_parameter('cmd_vel_timeout').value
         self.max_x = self.get_parameter('max_x').value
+        self.drift_tolerance = self.get_parameter('gz_drift_tolerance').value
+        self.drift_angle_tolerance = self.get_parameter('gz_drift_angle_tolerance').value
+        self.odom_linear_scale = self.get_parameter('odom_linear_scale').value
+        self.odom_angular_scale = self.get_parameter('odom_angular_scale').value
+        self.odom_linear_noise = self.get_parameter('odom_linear_noise').value
+        self.odom_angular_noise = self.get_parameter('odom_angular_noise').value
+        self._odom_rng = random.Random(self.get_parameter('odom_noise_seed').value)
+        self._gz_pose = None  # (x, y, z, qx, qy, qz, qw) as Gazebo last reported it
 
         self.lock = threading.Lock()
         self.x = self.get_parameter('x').value
@@ -102,9 +151,19 @@ class BasePosePublisher(Node):
         self.vy = 0.0
         self.omega = 0.0
         self.last_cmd_vel_time = None  # monotonic seconds; None = never received one
+        # Wheel-odometry pose: starts where the base spawns (the odom
+        # frame's own origin convention here), then drifts.
+        self.odom_x, self.odom_y, self.odom_yaw = self.x, self.y, self.yaw
 
         self.broadcaster = TransformBroadcaster(self)
+        self.odom_pub = None
+        if self.get_parameter('publish_odom').value:
+            self.odom_pub = self.create_publisher(
+                Odometry, self.get_parameter('odom_topic').value, 10)
+        self.ground_truth_pub = self.create_publisher(
+            Odometry, self.get_parameter('ground_truth_odom_topic').value, 10)
         self.gz_node = GzNode()
+        self.gz_node.subscribe(Pose_V, f'/world/{self.gz_world}/pose/info', self._gz_pose_cb)
         # TF publishes immediately, NOT gated on the Gazebo entity existing
         # (see _gz_teleport_loop's own comment for why that wait can now
         # take longer than the old fixed timeout did) -- wbc.py's
@@ -144,6 +203,7 @@ class BasePosePublisher(Node):
         x = min(msg.x, self.max_x)
         with self.lock:
             self.x, self.y, self.yaw = x, msg.y, msg.theta
+            self.odom_x, self.odom_y, self.odom_yaw = x, msg.y, msg.theta
             self.vx = self.vy = self.omega = 0.0
             self.last_cmd_vel_time = None
         self._gz_set_pose(x, msg.y, self.z, msg.theta)
@@ -178,7 +238,7 @@ class BasePosePublisher(Node):
                     and now - self.last_cmd_vel_time > self.cmd_vel_timeout):
                 self.vx = self.vy = self.omega = 0.0
             vx, vy, omega = self.vx, self.vy, self.omega
-            yaw = self.yaw
+            x0, y0, yaw = self.x, self.y, self.yaw
             # Body-frame twist -> world-frame pose update.
             c, s = math.cos(yaw), math.sin(yaw)
             self.x += (vx * c - vy * s) * dt
@@ -190,10 +250,55 @@ class BasePosePublisher(Node):
             # smooth limit the controller is expected to respect.
             if self.x > self.max_x:
                 self.x = self.max_x
+            moved = (self.x - x0, self.y - y0, self.yaw - yaw)
 
         self._publish_tf()
+        if dt > 0.0:
+            # Actual body-frame twist this tick (after max_x's clamp,
+            # unlike cmd_vel), from the world-frame pose change.
+            dx, dy, dyaw = moved
+            c, s = math.cos(yaw), math.sin(yaw)
+            actual = ((dx * c + dy * s) / dt, (-dx * s + dy * c) / dt, dyaw / dt)
+            with self.lock:
+                pose = (self.x, self.y, self.yaw)
+            self.ground_truth_pub.publish(self._odometry_msg(pose, actual))
+            if self.odom_pub is not None:
+                self._publish_odom(actual, dt)
+
+    def _odometry_msg(self, pose, twist):
+        x, y, yaw = pose
+        qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, yaw)
+        msg = Odometry()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self.frame_id
+        msg.child_frame_id = self.child_frame_id
+        msg.pose.pose.position.x = x
+        msg.pose.pose.position.y = y
+        msg.pose.pose.orientation.x = qx
+        msg.pose.pose.orientation.y = qy
+        msg.pose.pose.orientation.z = qz
+        msg.pose.pose.orientation.w = qw
+        msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.angular.z = twist
+        return msg
+
+    def _publish_odom(self, actual, dt):
+        """Wheel odometry for one tick, from the actual body twist."""
+        scales = (self.odom_linear_scale, self.odom_linear_scale, self.odom_angular_scale)
+        noises = (self.odom_linear_noise, self.odom_linear_noise, self.odom_angular_noise)
+        vx, vy, omega = (
+            scale * v + self._odom_rng.gauss(0.0, noise) if abs(v) > 1e-6 else 0.0
+            for v, scale, noise in zip(actual, scales, noises))
+        with self.lock:
+            c, s = math.cos(self.odom_yaw), math.sin(self.odom_yaw)
+            self.odom_x += (vx * c - vy * s) * dt
+            self.odom_y += (vx * s + vy * c) * dt
+            self.odom_yaw = math.remainder(self.odom_yaw + omega * dt, 2 * math.pi)
+            pose = (self.odom_x, self.odom_y, self.odom_yaw)
+        self.odom_pub.publish(self._odometry_msg(pose, (vx, vy, omega)))
 
     def _publish_tf(self):
+        if not self.publish_tf:
+            return
         with self.lock:
             x, y, z, yaw = self.x, self.y, self.z, self.yaw
         qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, yaw)
@@ -225,13 +330,52 @@ class BasePosePublisher(Node):
     # deadline, TF already publishing independently above) so however long
     # Gazebo actually takes to spawn, this simply keeps waiting instead of
     # giving up and hammering a nonexistent entity.
+    #
+    # Teleporting a parked base every period shook the arm's joints
+    # (measured: +-0.015 rad, up to 7 rad/s joint velocity at 30 Hz, none
+    # without), enough for MoveIt to reject the next trajectory's start
+    # state: the chassis rests ~1cm below the 'z' parameter on its wheels,
+    # so each teleport to 'z' dropped it again. So:
+    #  - teleports keep the height Gazebo reports (where it rests), not 'z';
+    #  - only when needed: the commanded pose changed (the base is
+    #    driving), or the entity drifted from it (its wheels are passive,
+    #    so the arm's reaction forces roll it: measured 0.2m and 20 deg
+    #    over two arm swings with no teleports at all).
     def _gz_teleport_loop(self, period):
         self._wait_for_entity()
+        sent = None
         while rclpy.ok():
             with self.lock:
-                x, y, z, yaw = self.x, self.y, self.z, self.yaw
-            self._gz_set_pose(x, y, z, yaw)
+                target = (self.x, self.y, self.z, self.yaw)
+            if target != sent or self._drifted(target):
+                x, y, z, yaw = target
+                actual = self._gz_pose
+                if self._gz_set_pose(x, y, actual[2] if actual else z, yaw):
+                    sent = target
             time.sleep(period)
+
+    def _gz_pose_cb(self, msg):
+        for p in msg.pose:
+            if p.name == self.gz_entity_name:
+                self._gz_pose = (p.position.x, p.position.y, p.position.z,
+                                 p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w)
+                return
+
+    def _drifted(self, target):
+        """Whether the entity's x/y/yaw left the target.
+
+        Height, roll and pitch are left to physics (the chassis settles on
+        its wheels).
+        """
+        actual = self._gz_pose
+        if actual is None:
+            return True
+        x, y, _z, yaw = target
+        if math.hypot(x - actual[0], y - actual[1]) > self.drift_tolerance:
+            return True
+        qx, qy, qz, qw = actual[3:]
+        actual_yaw = math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
+        return abs(math.remainder(yaw - actual_yaw, 2 * math.pi)) > self.drift_angle_tolerance
 
     def _gz_set_pose(self, x, y, z, yaw):
         qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, yaw)

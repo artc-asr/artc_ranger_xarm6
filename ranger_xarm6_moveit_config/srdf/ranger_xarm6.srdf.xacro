@@ -6,13 +6,14 @@
   <xacro:arg name="prefix" default="" />
   <xacro:property name="prefix" value="$(arg prefix)" />
 
-  <!-- The mobile base as a planar joint (x, y, yaw) between odom and
-       base_link. MoveIt reads its value from TF (odom -> base_link, owned by
-       base_pose_publisher.py in sim, the Ranger driver on hardware), so the
-       planning scene always has the robot where it really is. Planned only
-       by the 'base' group; 'arm' plans with the base held still. -->
-  <virtual_joint name="${prefix}base_virtual_joint" type="planar"
-    parent_frame="${prefix}odom" child_link="${prefix}base_link" />
+  <!-- The mobile base is joints in MoveIt's URDF
+       (urdf/ranger_xarm6_moveit.urdf.xacro): base_x_joint, base_y_joint,
+       base_theta_joint (planned below) and base_z_joint (height, never
+       planned: passive), odom -> base_link. Their states come from TF
+       (odom -> base_link, via base_joint_state_publisher.py), so the
+       planning scene always has the robot where it really is. The groups
+       below never mix translation and rotation, the Ranger can't do both
+       in one steering mode (see that URDF). -->
 
   <group name="arm">
     <chain base_link="${prefix}link_base" tip_link="${prefix}link_tcp" />
@@ -27,8 +28,19 @@
     <link name="${prefix}right_finger" />
     <joint name="${prefix}drive_joint" />
   </group>
-  <group name="base">
-    <joint name="${prefix}base_virtual_joint" />
+  <!-- Crab: translate at a fixed heading (Ranger parallel mode). -->
+  <group name="base_translation">
+    <joint name="${prefix}base_x_joint" />
+    <joint name="${prefix}base_y_joint" />
+  </group>
+  <!-- Spin in place (Ranger spinning mode). -->
+  <group name="base_rotation">
+    <joint name="${prefix}base_theta_joint" />
+  </group>
+  <!-- Base and arm together: crab + arm, heading locked. -->
+  <group name="whole_body">
+    <group name="base_translation" />
+    <group name="arm" />
   </group>
 
   <!-- home: xArm's own zero pose (gripper hangs down ~0.25m past the rear
@@ -70,6 +82,7 @@
        /joint_states, frozen for planning) and the gripper's mimic joints
        (follow drive_joint). Keep the wheel list in sync with
        scripts/generate_collision_matrix.py's PASSIVE_JOINTS. -->
+  <passive_joint name="${prefix}base_z_joint" />
   <passive_joint name="${prefix}fr_steering_joint" />
   <passive_joint name="${prefix}fr_wheel" />
   <passive_joint name="${prefix}fl_steering_joint" />

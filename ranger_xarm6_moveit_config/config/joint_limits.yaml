@@ -3,6 +3,9 @@
 # ranger_xarm6_description/config/ros2_controllers.yaml).
 # Velocity/acceleration from xarm_moveit_config's xarm6/joint_limits.yaml.
 # Default scaling kept low: this arm rides on a mobile base next to people.
+# Only MoveGroupInterface clients (e.g. RViz) read these; move_group
+# treats a request's 0 as 1.0, so ranger_xarm6_manipulation's coordinator
+# applies its own default_velocity_scaling (also 0.3).
 default_velocity_scaling_factor: 0.3
 default_acceleration_scaling_factor: 0.3
 
@@ -14,3 +17,10 @@ joint_limits:
   joint5: {has_velocity_limits: true, max_velocity: 2.14, has_acceleration_limits: true, max_acceleration: 10.0}
   joint6: {has_velocity_limits: true, max_velocity: 2.14, has_acceleration_limits: true, max_acceleration: 10.0}
   drive_joint: {has_velocity_limits: true, max_velocity: 2.0, has_acceleration_limits: true, max_acceleration: 10.0}
+  # Mobile base (urdf/ranger_xarm6_moveit.urdf.xacro), per axis: at 0.3
+  # scaling that's 0.3 m/s per axis (0.42 diagonally) and 0.23 rad/s. theta's
+  # 0.78 rad/s is the Ranger driver's own spin clamp (RangerMiniV2Params,
+  # used for V3); x/y stay well under its 2.7 m/s.
+  base_x_joint: {has_velocity_limits: true, max_velocity: 1.0, has_acceleration_limits: true, max_acceleration: 1.0}
+  base_y_joint: {has_velocity_limits: true, max_velocity: 1.0, has_acceleration_limits: true, max_acceleration: 1.0}
+  base_theta_joint: {has_velocity_limits: true, max_velocity: 0.78, has_acceleration_limits: true, max_acceleration: 1.5}

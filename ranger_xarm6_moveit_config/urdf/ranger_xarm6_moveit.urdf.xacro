@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<!-- MoveIt's model of the Ranger Mini 3.0 + xArm6: the robot's own
+     description (ranger_xarm6_description, same collision geometry as the
+     running robot) with the mobile base as real joints between odom and
+     base_link:
+
+       odom -[base_z_joint, prismatic z]-> base_z_link
+            -[base_x_joint, prismatic x]-> base_x_link
+            -[base_y_joint, prismatic y]-> base_y_link
+            -[base_theta_joint, continuous z]-> base_link
+
+     instead of an SRDF planar virtual joint. A planar joint's x/y/yaw are
+     one joint, so any group containing it moves all three together,
+     translating and rotating at once, which the Ranger can't do in one
+     steering mode (parallel/crab translates at a fixed heading, spinning
+     rotates in place; dual-Ackermann does both but on an arc, never used
+     here). As separate joints, groups pick exactly which base motion they
+     may plan: 'whole_body' = x + y + arm (crab, heading locked), 'base_rotation'
+     = theta (spin in place); see the SRDF. theta comes after x/y, so it
+     rotates base_link about its own origin.
+
+     base_z_joint is never planned (a passive joint in the SRDF): it only
+     carries base_link's height in odom (0.315m in sim, whatever the
+     Ranger driver's odom says on hardware), so MoveIt's model matches TF
+     exactly and anything in odom (the Gazebo world's collision objects,
+     odom-frame pose goals) needs no height correction.
+
+     Only move_group/RViz MotionPlanning load this. robot_state_publisher
+     keeps the plain description; the base joints' states are published
+     from odom -> base_link TF by base_joint_state_publisher.py. -->
+<robot name="ranger_xarm6" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="prefix" default="" />
+  <!-- Half-width of the square the base may plan in, around odom's origin
+       [m]. OMPL samples this whole square, so keep it near the real
+       workspace. -->
+  <xacro:arg name="base_workspace" default="20.0" />
+  <xacro:property name="prefix" value="$(arg prefix)" />
+  <xacro:property name="ws" value="$(arg base_workspace)" />
+
+  <xacro:include filename="$(find ranger_xarm6_description)/robots/ranger_xarm6.urdf.xacro" />
+
+  <link name="${prefix}odom" />
+  <link name="${prefix}base_z_link" />
+  <link name="${prefix}base_x_link" />
+  <link name="${prefix}base_y_link" />
+
+  <!-- velocity/effort here are URDF placeholders; MoveIt's real limits are
+       in config/joint_limits.yaml. -->
+  <joint name="${prefix}base_z_joint" type="prismatic">
+    <parent link="${prefix}odom" />
+    <child link="${prefix}base_z_link" />
+    <axis xyz="0 0 1" />
+    <limit lower="-5.0" upper="5.0" velocity="1.0" effort="1000" />
+  </joint>
+  <joint name="${prefix}base_x_joint" type="prismatic">
+    <parent link="${prefix}base_z_link" />
+    <child link="${prefix}base_x_link" />
+    <axis xyz="1 0 0" />
+    <limit lower="${-ws}" upper="${ws}" velocity="1.0" effort="1000" />
+  </joint>
+  <joint name="${prefix}base_y_joint" type="prismatic">
+    <parent link="${prefix}base_x_link" />
+    <child link="${prefix}base_y_link" />
+    <axis xyz="0 1 0" />
+    <limit lower="${-ws}" upper="${ws}" velocity="1.0" effort="1000" />
+  </joint>
+  <joint name="${prefix}base_theta_joint" type="continuous">
+    <parent link="${prefix}base_y_link" />
+    <child link="${prefix}base_link" />
+    <axis xyz="0 0 1" />
+    <limit velocity="1.0" effort="1000" />
+  </joint>
+</robot>

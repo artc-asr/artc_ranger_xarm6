@@ -151,6 +151,38 @@ def _fixed_camera_bridge_args(cam_id, prefix, robot_id):
     return args, remaps
 
 
+def _lazy_camera_bridge(args, remaps):
+    """A gz -> ROS parameter_bridge for camera topics, every one lazy.
+
+    Lazy: the gz topic is subscribed (so Gazebo renders the sensor) only
+    while something on the ROS side subscribes. This parameter_bridge
+    ignores its 'lazy' parameter for topics given on the command line, so
+    the same (args, remaps) go through a config_file, where lazy is per
+    topic.
+    """
+    remap = dict(remaps)
+    entries = []
+    for arg in args:
+        gz_topic, types = arg.split('@')
+        ros_type, gz_type = types.split('[')
+        entries.append({
+            'gz_topic_name': gz_topic,
+            'ros_topic_name': remap.get(gz_topic, gz_topic),
+            'ros_type_name': ros_type,
+            'gz_type_name': gz_type,
+            'direction': 'GZ_TO_ROS',
+            'lazy': True,
+        })
+    with tempfile.NamedTemporaryFile('w', prefix='ranger_xarm6_cam_bridge_', suffix='.yaml', delete=False) as f:
+        yaml.safe_dump(entries, f)
+    return Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        parameters=[{'config_file': f.name}],
+        output='screen',
+    )
+
+
 # Plain single-image cameras (left_camera/right_camera, see
 # usb_camera_sensor_tags in ranger_xarm6.urdf.xacro): just image_raw +
 # camera_info, unlike the D435i's multi-stream _FIXED_CAMERA_LEAVES. gz-side
@@ -280,6 +312,10 @@ def launch_setup(context, *args, **kwargs):
     # robot without building that bridge ourselves, and RViz+TF already
     # gives the same visualization for free).
     run_rviz = LaunchConfiguration('run_rviz').perform(context).lower() in ('true', '1', 'yes')
+    # odom -> base_link from the base itself (sim: base_pose_publisher.py's
+    # ground truth; real: the Ranger driver's wheel odometry). Off when
+    # something else owns it, e.g. ranger_xarm6_navigation's EKF.
+    publish_odom_tf = LaunchConfiguration('publish_odom_tf').perform(context).lower() in ('true', '1', 'yes')
     robot_id = LaunchConfiguration('robot_id').perform(context)
     robot_ip = LaunchConfiguration('robot_ip').perform(context)
     # Bare file name -> this package's worlds/ dir; anything with a '/' is
@@ -433,6 +469,7 @@ def launch_setup(context, *args, **kwargs):
                 'yaw': float(LaunchConfiguration('yaw').perform(context)),
                 'frame_id': f'{prefix}odom',
                 'child_frame_id': f'{prefix}base_link',
+                'publish_tf': publish_odom_tf,
                 # Must match spawn_entity_node's '-name' below so this
                 # node's gz-transport teleport calls (see
                 # base_pose_publisher.py) hit the right entity.
@@ -454,6 +491,22 @@ def launch_setup(context, *args, **kwargs):
         world_markers_node = Node(
             package='ranger_xarm6_description',
             executable='world_markers.py',
+            namespace=robot_id,
+            parameters=[{
+                'world_file': world_path,
+                'frame_id': f'{prefix}odom',
+                'ignore_models': [robot_id or 'ranger_xarm6'],
+                'use_sim_time': gazebo,
+            }],
+            output='screen',
+        )
+        # The same world's static models as MoveIt collision objects, so
+        # anything planning on top of this bringup (e.g.
+        # ranger_xarm6_manipulation's control.launch.py) avoids them
+        # without being told the world again (see world_collision_objects.py).
+        world_collision_node = Node(
+            package='ranger_xarm6_description',
+            executable='world_collision_objects.py',
             namespace=robot_id,
             parameters=[{
                 'world_file': world_path,
@@ -482,6 +535,7 @@ def launch_setup(context, *args, **kwargs):
                 joint_state_publisher_node,
                 odom_tf_publisher,
                 world_markers_node,
+                world_collision_node,
                 *([rviz_node] if run_rviz else []),
             ]
 
@@ -558,6 +612,9 @@ def launch_setup(context, *args, **kwargs):
         startup_actions.append(ft_bridge)
         startup_actions.append(ft_frame_fixup)
 
+        # The camera bridges are lazy (_lazy_camera_bridge): otherwise
+        # every camera renders every stream all the time, most of the
+        # sim's load.
         if enable_fixed_cameras:
             camera_args = []
             camera_remaps = []
@@ -565,13 +622,7 @@ def launch_setup(context, *args, **kwargs):
                 cam_args, cam_remaps = _fixed_camera_bridge_args(cam_id, prefix, robot_id)
                 camera_args.extend(cam_args)
                 camera_remaps.extend(cam_remaps)
-            camera_bridge = Node(
-                package='ros_gz_bridge',
-                executable='parameter_bridge',
-                arguments=camera_args,
-                remappings=camera_remaps,
-                output='screen',
-            )
+            camera_bridge = _lazy_camera_bridge(camera_args, camera_remaps)
             startup_actions.append(camera_bridge)
 
         if enable_usb_cameras:
@@ -581,24 +632,12 @@ def launch_setup(context, *args, **kwargs):
                 cam_args, cam_remaps = _usb_camera_bridge_args(cam_name, prefix, robot_id)
                 usb_args.extend(cam_args)
                 usb_remaps.extend(cam_remaps)
-            usb_camera_bridge = Node(
-                package='ros_gz_bridge',
-                executable='parameter_bridge',
-                arguments=usb_args,
-                remappings=usb_remaps,
-                output='screen',
-            )
+            usb_camera_bridge = _lazy_camera_bridge(usb_args, usb_remaps)
             startup_actions.append(usb_camera_bridge)
 
         if enable_wrist_camera:
             wrist_args, wrist_remaps = _fixed_camera_bridge_args('wrist', prefix, robot_id)
-            wrist_camera_bridge = Node(
-                package='ros_gz_bridge',
-                executable='parameter_bridge',
-                arguments=wrist_args,
-                remappings=wrist_remaps,
-                output='screen',
-            )
+            wrist_camera_bridge = _lazy_camera_bridge(wrist_args, wrist_remaps)
             startup_actions.append(wrist_camera_bridge)
 
         if enable_hipnuc_imu:
@@ -649,6 +688,22 @@ def launch_setup(context, *args, **kwargs):
                 output='screen',
             )
             startup_actions.append(livox_lidar_converter)
+            # The Mid-360's built-in IMU, computed from the base's ground
+            # truth and published on the real driver's 'livox/imu' topic in
+            # the real driver's format (g, frame "livox_frame"); see
+            # sim_livox_imu.py for why not a Gazebo IMU sensor.
+            livox_imu_sim = Node(
+                package='ranger_xarm6_description',
+                executable='sim_livox_imu.py',
+                namespace=robot_id,
+                parameters=[{
+                    'use_sim_time': True,
+                    'base_frame': f'{prefix}base_link',
+                    'imu_frame': f'{prefix}livox_imu_frame',
+                }],
+                output='screen',
+            )
+            startup_actions.append(livox_imu_sim)
 
         spawn_entity_node = Node(
             package='ros_gz_sim',
@@ -672,11 +727,27 @@ def launch_setup(context, *args, **kwargs):
         post_spawn_actions = list(controller_spawners)
         if run_rviz:
             post_spawn_actions.append(rviz_node)
+        # Random boxes in artc_lab's open area (not in the world file, so
+        # not in the map), for collision avoidance tests; see
+        # spawn_obstacles.py, which can also re-roll or clear them later.
+        random_obstacles = int(LaunchConfiguration('random_obstacles').perform(context))
+        if random_obstacles > 0:
+            if gz_world_name == 'artc_lab':
+                post_spawn_actions.append(Node(
+                    package='ranger_xarm6_description',
+                    executable='spawn_obstacles.py',
+                    arguments=['--count', str(random_obstacles),
+                               '--seed', LaunchConfiguration('obstacle_seed').perform(context)],
+                    output='screen',
+                ))
+            else:
+                print(f'random_obstacles: only for artc_lab.world, not {gz_world_name}; none spawned')
 
         return [
             robot_state_publisher_node,
             odom_tf_publisher,
             world_markers_node,
+            world_collision_node,
             *[RegisterEventHandler(OnProcessStart(target_action=robot_state_publisher_node, on_start=a)) for a in startup_actions],
             RegisterEventHandler(OnProcessStart(target_action=robot_state_publisher_node, on_start=spawn_entity_node)),
             RegisterEventHandler(OnProcessExit(target_action=spawn_entity_node, on_exit=post_spawn_actions)),
@@ -719,7 +790,7 @@ def launch_setup(context, *args, **kwargs):
             'port_name': can_device,
             'odom_frame': f'{prefix}odom',
             'base_frame': f'{prefix}base_link',
-            'publish_odom_tf': 'true',
+            'publish_odom_tf': str(publish_odom_tf).lower(),
         }.items(),
     )
 
@@ -764,6 +835,11 @@ def launch_setup(context, *args, **kwargs):
                     'enable_infra1': 'true',
                     'enable_infra2': 'true',
                     'pointcloud.enable': 'true',
+                    # For Nav2's costmaps (ranger_xarm6_navigation, from the
+                    # depth image): 848x480 (the D435's most accurate mode),
+                    # 15 Hz, decimated 2x -> 424x240.
+                    'depth_module.depth_profile': '848,480,15',
+                    'decimation_filter.enable': 'true',
                     'publish_tf': 'false',
                 }.items(),
             ))
@@ -934,6 +1010,9 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_wrist_camera', default_value='true', description='Bridge (sim) / launch orbbec_camera (real, ros-humble-orbbec-camera) for the wrist-mounted Orbbec Gemini 2. Mesh stays the D435i+stand placeholder.'),
         DeclareLaunchArgument('wrist_camera_serial', default_value='', description='real hardware only: wrist camera Gemini 2 serial number (only needed if multiple Orbbec devices are ever present at once)'),
         DeclareLaunchArgument('enable_hipnuc_imu', default_value='true', description='Bridge the gz-sim IMU sensor for the HiPNUC HI14R3-232-000 (mounted on extras_link). Sim only for now -- real hardware driver not wired yet.'),
+        DeclareLaunchArgument('random_obstacles', default_value='0', description="Sim, artc_lab only: spawn this many random small boxes in the room's open area (spawn_obstacles.py), for collision avoidance tests"),
+        DeclareLaunchArgument('obstacle_seed', default_value='-1', description='Seed for random_obstacles; -1 = a new layout every launch (the seed used is printed)'),
+        DeclareLaunchArgument('publish_odom_tf', default_value='true', description='Publish odom -> base_link from the base (sim: ground truth, real: Ranger wheel odometry). false when ranger_xarm6_navigation odometry.launch.py (EKF) owns it.'),
         DeclareLaunchArgument('enable_livox_lidar', default_value='true', description='Bridge the gz-sim gpu_lidar sensor (sim) or launch livox_ros_driver2 directly (sim:=false) for the Livox Mid-360 (mounted on extras_link).'),
         OpaqueFunction(function=launch_setup),
     ])
