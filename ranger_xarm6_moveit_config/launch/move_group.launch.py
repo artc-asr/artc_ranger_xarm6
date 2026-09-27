@@ -21,6 +21,8 @@ and execute from RViz alone, switch first:
         --activate arm_trajectory_controller --deactivate arm_velocity_controller
 """
 import os
+import re
+import tempfile
 
 import xacro
 import yaml
@@ -116,11 +118,20 @@ def launch_setup(context, *args, **kwargs):
 
     nodes = [move_group, base_joint_states]
     if use_rviz:
+        # The MotionPlanning panel's MoveGroupInterface ignores RViz's own
+        # namespace: an empty 'Move Group Namespace' means /move_action,
+        # which nothing serves (Plan/Execute silently do nothing, after a
+        # 60s wait). Point it at this robot_id's move_group.
+        with open(os.path.join(moveit_share, 'config', 'moveit.rviz')) as f:
+            rviz_config = re.sub(r'(Move Group Namespace:).*', rf'\1 /{robot_id}', f.read())
+        rviz_file = tempfile.NamedTemporaryFile('w', prefix='ranger_xarm6_moveit_', suffix='.rviz', delete=False)
+        rviz_file.write(rviz_config)
+        rviz_file.close()
         nodes.append(Node(
             package='rviz2',
             executable='rviz2',
             namespace=robot_id,
-            arguments=['-d', os.path.join(moveit_share, 'config', 'moveit.rviz'), '-f', f'{prefix}odom'],
+            arguments=['-d', rviz_file.name, '-f', f'{prefix}odom'],
             parameters=[{
                 'robot_description': robot_description,
                 'robot_description_semantic': robot_description_semantic,
