@@ -923,30 +923,35 @@
                (raw x/y/z stats vs. known nearby world geometry) rather than
                assuming either way. -->
           <optical_frame_id>${prefix}camera_depth_frame</optical_frame_id>
-          <horizontal_fov>1.57</horizontal_fov>
+          <!-- Depth as Nav2 gets it from the real D435i (ranger_xarm6.launch.py:
+               848x480 at 15 Hz, decimated 2x to 424x240): the D435's 87 deg
+               depth FOV, nothing closer than its ~0.28 m minimum range, ~1 cm
+               noise. At 1280x720/30 Hz the ~1M-point clouds alone slowed the
+               sim ~5x. -->
+          <horizontal_fov>1.518</horizontal_fov>
           <image>
-            <width>1280</width>
-            <height>720</height>
+            <width>424</width>
+            <height>240</height>
             <format>L8</format>
           </image>
           <clip>
-            <near>0.1</near>
+            <near>0.28</near>
             <far>100</far>
           </clip>
           <depth_camera>
             <clip>
-              <near>0.1</near>
+              <near>0.28</near>
               <far>10</far>
             </clip>
           </depth_camera>
           <noise>
             <type>gaussian</type>
             <mean>0.0</mean>
-            <stddev>0.100</stddev>
+            <stddev>0.01</stddev>
           </noise>
         </camera>
         <always_on>1</always_on>
-        <update_rate>30</update_rate>
+        <update_rate>15</update_rate>
         <visualize>0</visualize>
         <topic>${prefix}camera/depth</topic>
       </sensor>

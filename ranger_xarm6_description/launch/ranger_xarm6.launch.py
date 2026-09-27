@@ -151,6 +151,38 @@ def _fixed_camera_bridge_args(cam_id, prefix, robot_id):
     return args, remaps
 
 
+def _lazy_camera_bridge(args, remaps):
+    """A gz -> ROS parameter_bridge for camera topics, every one lazy.
+
+    Lazy: the gz topic is subscribed (so Gazebo renders the sensor) only
+    while something on the ROS side subscribes. This parameter_bridge
+    ignores its 'lazy' parameter for topics given on the command line, so
+    the same (args, remaps) go through a config_file, where lazy is per
+    topic.
+    """
+    remap = dict(remaps)
+    entries = []
+    for arg in args:
+        gz_topic, types = arg.split('@')
+        ros_type, gz_type = types.split('[')
+        entries.append({
+            'gz_topic_name': gz_topic,
+            'ros_topic_name': remap.get(gz_topic, gz_topic),
+            'ros_type_name': ros_type,
+            'gz_type_name': gz_type,
+            'direction': 'GZ_TO_ROS',
+            'lazy': True,
+        })
+    with tempfile.NamedTemporaryFile('w', prefix='ranger_xarm6_cam_bridge_', suffix='.yaml', delete=False) as f:
+        yaml.safe_dump(entries, f)
+    return Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        parameters=[{'config_file': f.name}],
+        output='screen',
+    )
+
+
 # Plain single-image cameras (left_camera/right_camera, see
 # usb_camera_sensor_tags in ranger_xarm6.urdf.xacro): just image_raw +
 # camera_info, unlike the D435i's multi-stream _FIXED_CAMERA_LEAVES. gz-side
@@ -579,6 +611,9 @@ def launch_setup(context, *args, **kwargs):
         startup_actions.append(ft_bridge)
         startup_actions.append(ft_frame_fixup)
 
+        # The camera bridges are lazy (_lazy_camera_bridge): otherwise
+        # every camera renders every stream all the time, most of the
+        # sim's load.
         if enable_fixed_cameras:
             camera_args = []
             camera_remaps = []
@@ -586,13 +621,7 @@ def launch_setup(context, *args, **kwargs):
                 cam_args, cam_remaps = _fixed_camera_bridge_args(cam_id, prefix, robot_id)
                 camera_args.extend(cam_args)
                 camera_remaps.extend(cam_remaps)
-            camera_bridge = Node(
-                package='ros_gz_bridge',
-                executable='parameter_bridge',
-                arguments=camera_args,
-                remappings=camera_remaps,
-                output='screen',
-            )
+            camera_bridge = _lazy_camera_bridge(camera_args, camera_remaps)
             startup_actions.append(camera_bridge)
 
         if enable_usb_cameras:
@@ -602,24 +631,12 @@ def launch_setup(context, *args, **kwargs):
                 cam_args, cam_remaps = _usb_camera_bridge_args(cam_name, prefix, robot_id)
                 usb_args.extend(cam_args)
                 usb_remaps.extend(cam_remaps)
-            usb_camera_bridge = Node(
-                package='ros_gz_bridge',
-                executable='parameter_bridge',
-                arguments=usb_args,
-                remappings=usb_remaps,
-                output='screen',
-            )
+            usb_camera_bridge = _lazy_camera_bridge(usb_args, usb_remaps)
             startup_actions.append(usb_camera_bridge)
 
         if enable_wrist_camera:
             wrist_args, wrist_remaps = _fixed_camera_bridge_args('wrist', prefix, robot_id)
-            wrist_camera_bridge = Node(
-                package='ros_gz_bridge',
-                executable='parameter_bridge',
-                arguments=wrist_args,
-                remappings=wrist_remaps,
-                output='screen',
-            )
+            wrist_camera_bridge = _lazy_camera_bridge(wrist_args, wrist_remaps)
             startup_actions.append(wrist_camera_bridge)
 
         if enable_hipnuc_imu:
@@ -802,6 +819,11 @@ def launch_setup(context, *args, **kwargs):
                     'enable_infra1': 'true',
                     'enable_infra2': 'true',
                     'pointcloud.enable': 'true',
+                    # For Nav2's costmaps (ranger_xarm6_navigation, from the
+                    # depth image): 848x480 (the D435's most accurate mode),
+                    # 15 Hz, decimated 2x -> 424x240.
+                    'depth_module.depth_profile': '848,480,15',
+                    'decimation_filter.enable': 'true',
                     'publish_tf': 'false',
                 }.items(),
             ))
