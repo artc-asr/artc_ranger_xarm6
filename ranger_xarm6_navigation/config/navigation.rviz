@@ -1,0 +1,124 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Reference Frame: robot_a_map
+      Cell Size: 1
+      Plane Cell Count: 12
+      Offset: {X: 5, Y: 2.6, Z: 0}
+      Value: true
+    - Class: rviz_default_plugins/Map
+      Name: Map
+      Enabled: true
+      Topic:
+        Value: /robot_a/map
+        Durability Policy: Transient Local
+      Color Scheme: map
+      Alpha: 0.8
+      Value: true
+    - Class: rviz_default_plugins/Map
+      Name: Global Costmap
+      Enabled: true
+      Topic:
+        Value: /robot_a/global_costmap/costmap
+      Color Scheme: costmap
+      Alpha: 0.4
+      Value: true
+    - Class: rviz_default_plugins/Map
+      Name: Local Costmap
+      Enabled: true
+      Topic:
+        Value: /robot_a/local_costmap/costmap
+      Color Scheme: costmap
+      Alpha: 0.5
+      Value: true
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_a/robot_description
+        Durability Policy: Transient Local
+      Value: true
+    - Class: rviz_default_plugins/Polygon
+      Name: Footprint
+      Enabled: true
+      Topic:
+        Value: /robot_a/local_costmap/published_footprint
+      Color: 0; 255; 0
+      Value: true
+    - Class: rviz_default_plugins/Polygon
+      Name: Collision Stop Zone
+      Enabled: true
+      Topic:
+        Value: /robot_a/polygon_stop
+      Color: 255; 0; 0
+      Value: true
+    - Class: rviz_default_plugins/Polygon
+      Name: Collision Slowdown Zone
+      Enabled: true
+      Topic:
+        Value: /robot_a/polygon_slowdown
+      Color: 255; 170; 0
+      Value: true
+    - Class: rviz_default_plugins/Path
+      Name: Global Plan
+      Enabled: true
+      Topic:
+        Value: /robot_a/plan
+      Color: 255; 0; 255
+      Line Style: Billboards
+      Line Width: 0.03
+      Value: true
+    - Class: rviz_default_plugins/Path
+      Name: Local Plan
+      Enabled: true
+      Topic:
+        Value: /robot_a/local_plan
+      Color: 0; 200; 255
+      Line Style: Billboards
+      Line Width: 0.03
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Lidar
+      Enabled: true
+      Topic:
+        Value: /robot_a/livox/lidar
+      Style: Points
+      Size (Pixels): 2
+      Color Transformer: AxisColor
+      Axis: Z
+      Decay Time: 0
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: robot_a_map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Value: /robot_a/goal_pose
+    - Class: rviz_default_plugins/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Current View
+      X: 5
+      Y: 2.6
+      Scale: 80
+Window Geometry:
+  Height: 900
+  Width: 1500
