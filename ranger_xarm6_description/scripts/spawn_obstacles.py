@@ -13,8 +13,8 @@ seen by the robot's sensors. Boxes are static, random in size (sides
 --min-side..--max-side, height --min-height..--max-height, so some are
 below what the lidar sees up close) and yaw, kept --inset inside the area
 and --gap apart (edge to edge, wider than the robot) so there's always a
-way between them. Named obstacle_<i>; each run first removes the previous
-ones. Waits for the world to exist, so it can start with the sim.
+way between them. Named obstacle_<i>; each run first removes the ones
+already in the world. Waits for the world to exist, so it can start with the sim.
 """
 import argparse
 import math
@@ -25,7 +25,9 @@ import time
 
 from gz.msgs10.boolean_pb2 import Boolean
 from gz.msgs10.entity_factory_pb2 import EntityFactory
+from gz.msgs10.empty_pb2 import Empty
 from gz.msgs10.entity_pb2 import Entity
+from gz.msgs10.scene_pb2 import Scene
 from gz.msgs10.world_stats_pb2 import WorldStatistics
 from gz.transport13 import Node
 
@@ -77,7 +79,6 @@ def main():
     p.add_argument('--inset', type=float, default=0.3, help='margin inside the area [m]')
     p.add_argument('--world', default='artc_lab')
     p.add_argument('--clear', action='store_true', help='only remove the boxes')
-    p.add_argument('--max-previous', type=int, default=50, help='obstacle_<i> names to remove first')
     args, _ = p.parse_known_args()  # ignore --ros-args when started by launch
 
     node = Node()
@@ -97,12 +98,23 @@ def main():
         sys.exit(f'world {args.world} is not running')
     node.unsubscribe(f'/world/{args.world}/stats')
 
-    for i in range(args.max_previous):
+    # Only the obstacles that exist: removing a missing name makes Gazebo
+    # log an error. The query fails until this node has discovered the
+    # service, so retry.
+    for _ in range(20):
+        ok, scene = node.request(f'/world/{args.world}/scene/info', Empty(), Empty, Scene, 2000)
+        if ok:
+            break
+        time.sleep(0.5)
+    else:
+        sys.exit(f'/world/{args.world}/scene/info not answering')
+    existing = [m.name for m in scene.model if m.name.startswith('obstacle_')]
+    for name in existing:
         e = Entity()
-        e.name, e.type = f'obstacle_{i}', Entity.MODEL
-        request(node, remove, e, Entity, 500)
+        e.name, e.type = name, Entity.MODEL
+        request(node, remove, e, Entity, 2000)
     if args.clear:
-        print('removed the obstacles')
+        print(f'removed {len(existing)} obstacles')
         return
 
     seed = args.seed if args.seed >= 0 else random.SystemRandom().randrange(10 ** 6)
