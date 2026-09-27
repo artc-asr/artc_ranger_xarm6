@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4">
+  <!-- Park the arm and drive home. -->
+  <BehaviorTree ID="GoHome">
+    <Sequence>
+      <ArmToNamedPose pose="stow"/>
+      <NavigateToWaypoint waypoint="home"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- Drive to the north-east table's staging spot, then turn the arm side
+       (the back) towards cube_4, then back again. -->
+  <BehaviorTree ID="DemoTurn">
+    <Sequence>
+      <ArmToNamedPose pose="stow"/>
+      <NavigateToWaypoint waypoint="table_ne_stage"/>
+      <TurnBase angle_deg="90"/>
+      <TurnBase back_towards="above_cube_4"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- Open and close the gripper. -->
+  <BehaviorTree ID="GripperTest">
+    <Sequence>
+      <Gripper command="close"/>
+      <Gripper command="open"/>
+    </Sequence>
+  </BehaviorTree>
+</root>

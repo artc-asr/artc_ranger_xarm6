@@ -1,0 +1,13 @@
+# Base waypoints: name: {frame, x [m], y [m], yaw_deg}. The heading is the
+# base's +x (its front); the arm is at the back, so a pick/place waypoint
+# faces AWAY from the table. Teach: drive there, then
+#   ros2 run ranger_xarm6_tasks save_waypoint.py <name>
+# (replaces an existing line of that name, keeps the rest). Examples are
+# for the sim's artc_lab (map = Gazebo's world frame).
+home: {frame: robot_a_map, x: 0.94, y: 4.35, yaw_deg: -90.0}
+# north-east table (x 5.98-8.78, y from 3.95): cube_4 at (7.4, 4.12)
+table_ne_stage: {frame: robot_a_map, x: 7.40, y: 2.90, yaw_deg: -90.0}
+table_ne_dock: {frame: robot_a_map, x: 7.40, y: 3.58, yaw_deg: -90.0}
+# south table (x 4.00-6.49, y up to 0.91): a free spot at (5.25, 0.75)
+table_s_stage: {frame: robot_a_map, x: 5.25, y: 1.95, yaw_deg: 90.0}
+table_s_dock: {frame: robot_a_map, x: 5.25, y: 1.29, yaw_deg: 90.0}

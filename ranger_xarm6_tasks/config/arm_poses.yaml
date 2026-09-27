@@ -1,0 +1,8 @@
+# Gripper (link_tcp, between the fingertips) poses: name: {frame,
+# position [m], orientation [x, y, z, w]}. In robot_a_odom a pose is a
+# place in the room; in robot_a_base_link it's relative to the base.
+# [0, 1, 0, 0] = pointing down. Teach: move the arm there, then
+#   ros2 run ranger_xarm6_tasks save_arm_pose.py <name> [--frame robot_a_base_link]
+# Examples are for the sim's artc_lab (tabletops at 0.75 m, cubes 5 cm).
+above_cube_4: {frame: robot_a_odom, position: [7.40, 4.12, 0.85], orientation: [0.0, 1.0, 0.0, 0.0]}
+above_table_s: {frame: robot_a_odom, position: [5.25, 0.75, 0.85], orientation: [0.0, 1.0, 0.0, 0.0]}

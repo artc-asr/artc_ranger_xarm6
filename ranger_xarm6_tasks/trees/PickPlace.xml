@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4">
+  <!-- Pick what's under a taught arm pose, from a table.
+       stage: a waypoint ~0.6 m out from the table, back to it (Nav2 drives there);
+       dock:  the waypoint the base docks at, back to the table (MoveIt: may reach under the tabletop;
+              docking and leaving the dock bypass the collision monitor, whose 2D footprint calls
+              that a collision);
+       above: the arm pose just above the object (gripper down);
+       grasp_dz: how far down from `above` to close the fingers (negative).
+       The arm moves are retried: MoveIt's planner is randomized, and a plan through the
+       tabletop (INVALID_MOTION_PLAN) was seen once in sim where the next attempt was fine. -->
+  <BehaviorTree ID="PickAt">
+    <Sequence>
+      <ArmToNamedPose pose="stow"/>
+      <NavigateToWaypoint waypoint="{stage}"/>
+      <Gripper command="open"/>
+      <WholeBodyToPose pose="{above}" base_waypoint="{dock}"/>
+      <RetryUntilSuccessful num_attempts="3">
+        <ArmToPose pose="{above}" offset_z="{grasp_dz}"/>
+      </RetryUntilSuccessful>
+      <Gripper command="close" expect="holding"/>
+      <RetryUntilSuccessful num_attempts="3">
+        <ArmToPose pose="{above}"/>
+      </RetryUntilSuccessful>
+      <BaseToPose waypoint="{stage}" mode="whole_body" collision_monitor="never"/>
+      <ArmToNamedPose pose="home"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- Put down what the gripper holds, under a taught arm pose on a table.
+       Same ports as PickAt; place_dz: how far down from `above` to open. -->
+  <BehaviorTree ID="PlaceAt">
+    <Sequence>
+      <NavigateToWaypoint waypoint="{stage}"/>
+      <WholeBodyToPose pose="{above}" base_waypoint="{dock}"/>
+      <RetryUntilSuccessful num_attempts="3">
+        <ArmToPose pose="{above}" offset_z="{place_dz}"/>
+      </RetryUntilSuccessful>
+      <Gripper command="open"/>
+      <RetryUntilSuccessful num_attempts="3">
+        <ArmToPose pose="{above}"/>
+      </RetryUntilSuccessful>
+      <BaseToPose waypoint="{stage}" mode="whole_body" collision_monitor="never"/>
+      <ArmToNamedPose pose="stow"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- cube_4 from the north-east table to the south table, then home. -->
+  <BehaviorTree ID="DemoPickPlace">
+    <Sequence>
+      <Say message="picking cube_4"/>
+      <SubTree ID="PickAt" stage="table_ne_stage" dock="table_ne_dock" above="above_cube_4" grasp_dz="-0.07"/>
+      <Say message="placing it on the south table"/>
+      <SubTree ID="PlaceAt" stage="table_s_stage" dock="table_s_dock" above="above_table_s" place_dz="-0.065"/>
+      <SubTree ID="GoHome"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- Only the pick half. -->
+  <BehaviorTree ID="DemoPick">
+    <SubTree ID="PickAt" stage="table_ne_stage" dock="table_ne_dock" above="above_cube_4" grasp_dz="-0.07"/>
+  </BehaviorTree>
+</root>

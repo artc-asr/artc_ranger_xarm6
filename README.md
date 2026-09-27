@@ -12,6 +12,8 @@ Application code (e.g. [wbcc_mm](https://github.com/artc-asr/whole_body_complian
 | `ranger_xarm6_moveit_config` | MoveIt 2 config: the base as `base_x/y/theta` joints (crab and spin never mixed), the arm, and `whole_body`. |
 | `ranger_xarm6_manipulation` | MoveIt-based base + arm control (sequential or whole-body), `MoveToGoal` action. See its [README](ranger_xarm6_manipulation/README.md). |
 | `ranger_xarm6_navigation` | Odometry (EKF over wheel odometry + the Mid-360's IMU), FAST-LIO2 3D mapping with the front D435i's low obstacles, the 2D grid, and Nav2 (lidar + front D435i costmaps, collision monitor); a localizer is still to come. See its [README](ranger_xarm6_navigation/README.md). |
+| `ranger_xarm6_tasks` | Tasks as behavior trees (BehaviorTree.CPP v4), edited and watched in Groot2: taught waypoints and arm poses, steps over Nav2, MoveIt and the gripper, run by name. See its [README](ranger_xarm6_tasks/README.md). |
+| `BehaviorTree.ROS2` (submodule, `humble` branch) | BehaviorTree.CPP's ROS 2 layer: the task server (`TreeExecutionServer`, `ExecuteTree` action). |
 | `ranger_mini_v3_description` | Vendored — missing from upstream `ranger_ros2` for ROS 2 Humble at the time this was ported. |
 | `xarm_ros2` (submodule) | UFACTORY xArm6 description, ros2_control, and driver packages. |
 | `westonrobot_ranger_ros2` (submodule) | Ranger Mini 3.0 real-hardware bringup/driver. |
@@ -50,6 +52,9 @@ sudo apt-get install -y \
 # Navigation: robot_localization (EKF), pcl_ros (FAST-LIO); rosdep below also finds them
 sudo apt-get install -y ros-humble-robot-localization ros-humble-pcl-ros
 
+# Tasks: BehaviorTree.CPP v4 (installs next to Nav2's v3)
+sudo apt-get install -y ros-humble-behaviortree-cpp
+
 rosdep install --from-paths . --ignore-src -r -y \
   --skip-keys "gz_sim_vendor sdformat_vendor gz_transport_vendor gz_msgs_vendor"
 
@@ -72,7 +77,7 @@ cp livox_ros_driver2/package_ROS2.xml livox_ros_driver2/package.xml
 export GZ_VERSION=harmonic
 colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release -DROS_EDITION=ROS2 -DDISTRO_ROS=humble \
   -DCMAKE_PREFIX_PATH=$HOME/.local \
-  --packages-skip xarm_moveit_servo xarm_planner \
+  --packages-skip xarm_moveit_servo xarm_planner btcpp_ros2_samples \
   gz_ros2_control_demos gz_ros2_control_tests ign_ros2_control ign_ros2_control_demos \
   --allow-overriding gz_ros2_control
 
@@ -259,6 +264,10 @@ How it behaves:
   **aborts** rather than hitting something; send another goal.
 - Don't send a MoveIt goal (section 4) while a Nav2 goal runs: both drive
   the base.
+- While Nav2 runs, MoveIt's base motions go through the collision monitor
+  too (`base_trajectory_server`'s `collision_monitor` parameter: auto /
+  never / always). Docking under a tabletop needs `never`: the monitor's
+  2D footprint calls that a collision (the task nodes set it per step).
 
 Real robot: not yet. Navigation needs a localizer (map -> odom) that
 isn't built; in sim a fixed map -> odom stands in, since the sim's odom
@@ -441,13 +450,39 @@ ros2 topic pub -w 1 -t 3 /robot_a/gripper_position_controller/commands std_msgs/
 (`-w 1 -t 3`: wait for the controller and send 3 times; a single
 `--once` can be lost.)
 
+As an action with a result (`control_msgs/GripperCommand`, position =
+drive_joint in rad; `stalled` = holding something): `/robot_a/gripper_command`,
+served by `gripper_action_server.py`, which `ranger_xarm6_tasks`'
+`tasks.launch.py` starts.
+
 Pick sequence (the steps; the grasp itself hasn't been tuned/tested in
 sim): `gripper.py open` -> pose goal 5 cm above the cube (4.2) -> pose
 goal lowering the fingertips to around the cube's middle (a 5 cm cube on
 a 0.75 m table: z ~0.78) -> `gripper.py close` (should report `holding
 something`) -> pose goal back up -> drive.
 
-### 6. Troubleshooting
+### 6. Tasks: behavior trees in Groot2
+
+Whole jobs ("drive to the table, turn the arm side to it, pick the cube,
+carry it, put it down") as behavior trees: steps dragged together in
+**Groot2**, saved as XML in `ranger_xarm6_tasks/trees/`, run by name.
+Waypoints and arm poses are taught by putting the robot there and saving.
+
+```bash
+# Terminals 1-3: the robot (run_rviz:=false), Nav2 (section 3), MoveIt (section 4)
+# Terminal 4:
+ros2 launch ranger_xarm6_tasks tasks.launch.py
+# then:
+ros2 run ranger_xarm6_tasks run_task.py --list
+ros2 run ranger_xarm6_tasks run_task.py DemoPickPlace       # Ctrl-C cancels
+ros2 run ranger_xarm6_tasks save_waypoint.py <name>         # teach where the base is
+ros2 run ranger_xarm6_tasks save_arm_pose.py <name>         # teach where the gripper is
+```
+
+Groot2 setup, editing and live monitoring, every step type and the
+example tasks: [ranger_xarm6_tasks/README.md](ranger_xarm6_tasks/README.md).
+
+### 7. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
@@ -457,6 +492,8 @@ something`) -> pose goal back up -> drive.
 | MoveIt's RViz Plan/Execute does nothing (waits ~60 s) | the MotionPlanning panel's **Move Group Namespace** must be `/robot_a` (Displays -> MotionPlanning) |
 | Gripper doesn't move | use `gripper.py`; check `ros2 control list_controllers -c /robot_a/controller_manager` shows `gripper_position_controller` active |
 | Robot drifts / wrong pose after a crash in sim | restart terminal 1 (and everything on top) |
+| A task is refused | another one runs (cancel it), or the name isn't a tree in `ranger_xarm6_tasks/trees/` (`run_task.py --list`); terminal 4 says which |
+| A task step fails | terminal 4 names the step and the reason (e.g. `unknown waypoint`, MoveIt's message) |
 
 ## Using this repo from another workspace
 
