@@ -99,7 +99,13 @@ The example tasks (`trees/Basics.xml`, `trees/PickPlace.xml`, for the sim's
 | `DemoPickPlace` | pick `cube_4`, carry it to the south table, put it down (`PlaceAt`), go home |
 
 Tested in sim: all of these run to SUCCESS; `DemoPickPlace` is 18 steps
-(~3 min sim time), ending 9 cm / 1.4 deg from home. **In sim the cube
+(~3 min sim time, 4-5 min wall), ending 9 cm / 1.4 deg from home. Five
+runs of it on fresh stacks: 4 SUCCESS (FastDDS 3/3, Cyclone 1/2). The
+failure logged Nav2's intermittent controller TF freeze (see
+`ranger_xarm6_navigation`'s README); one earlier run also saw MoveIt return a
+plan through the tabletop once, which is why `PickAt`/`PlaceAt` retry
+their arm moves. A failed task stops where it is: re-run it, or run
+`GoHome`. **In sim the cube
 doesn't come along**: the fingers close on it (the gripper reports
 `holding something`, stopped at 0.41-0.47 of 0.85) but Gazebo's contact
 grasp doesn't hold it when the arm lifts. The task logic is unaffected;
