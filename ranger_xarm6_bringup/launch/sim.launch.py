@@ -135,7 +135,7 @@ def launch_setup(context, *args, **kwargs):
 
 
 def generate_launch_description():
-    maps = os.path.expanduser('~/ranger_xarm6_maps/artc_lab.yaml')
+    maps = os.path.join(get_package_share_directory('ranger_xarm6_navigation'), 'maps', 'artc_lab.yaml')
     return LaunchDescription([
         DeclareLaunchArgument('robot_id', default_value='robot_a'),
         DeclareLaunchArgument('world', default_value='artc_lab.world'),

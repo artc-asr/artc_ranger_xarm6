@@ -186,17 +186,18 @@ Builds the map that navigation uses: a 3D point cloud from FAST-LIO2 (the
 Mid-360 lidar + its IMU), plus the front RealSense's low obstacles, then
 a 2D grid from both.
 
-**In sim you can skip this** if you have `~/ranger_xarm6_maps/artc_lab.*`
-(the lab's map; it lives on the computer that made it, not in this repo:
-copy it over, or map once with the steps below and `map:=~/ranger_xarm6_maps/artc_lab.pcd`).
-Map again for a new world or layout.
+**In sim you can skip this**: the lab's map is in the repo,
+`ranger_xarm6_navigation/maps/artc_lab.*` (the FAST-LIO `.pcd`, the 2D
+grid `.pgm` + `.yaml`, and `_map_frame.pcd` for the localizer), and it's
+the navigation launches' default. Map again for a new world or layout;
+new maps go in the same folder (paths below are from the repo root).
 
 1. Terminal 1: the robot (section 1), **without** `random_obstacles`
    (anything present while mapping ends up in the map).
 2. Terminal 2, start mapping (pick the file name):
 
    ```bash
-   ros2 launch ranger_xarm6_navigation mapping.launch.py map:=~/ranger_xarm6_maps/lab.pcd
+   ros2 launch ranger_xarm6_navigation mapping.launch.py map:=ranger_xarm6_navigation/maps/lab.pcd
    ```
 
 3. Terminal 3, drive the robot round the room with teleop (above).
@@ -218,7 +219,7 @@ Map again for a new world or layout.
 5. Make the 2D grid for Nav2:
 
    ```bash
-   ros2 run ranger_xarm6_navigation pcd_to_grid.py ~/ranger_xarm6_maps/lab.pcd \
+   ros2 run ranger_xarm6_navigation pcd_to_grid.py ranger_xarm6_navigation/maps/lab.pcd \
      --origin 0.917 4.177 0.793 1.5708
    ```
 
@@ -234,7 +235,7 @@ same steps with `use_sim_time:=false`:
 
 ```bash
 ros2 launch ranger_xarm6_navigation odometry.launch.py use_sim_time:=false
-ros2 launch ranger_xarm6_navigation mapping.launch.py use_sim_time:=false map:=~/ranger_xarm6_maps/lab.pcd
+ros2 launch ranger_xarm6_navigation mapping.launch.py use_sim_time:=false map:=ranger_xarm6_navigation/maps/lab.pcd
 ```
 
 For the grid, `--origin 0 0 <IMU height above the floor> 0` makes the map
@@ -249,7 +250,7 @@ front RealSense see on the way.
 ```bash
 # Terminal 1: the robot (section 1), e.g. with run_rviz:=false random_obstacles:=5
 # Terminal 2:
-ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_maps/artc_lab.yaml
+ros2 launch ranger_xarm6_navigation navigation.launch.py            # map: ranger_xarm6_navigation/maps/artc_lab.yaml
 ```
 
 Wait until terminal 2 has printed `Managed nodes are active` **twice**

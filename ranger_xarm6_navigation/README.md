@@ -92,7 +92,7 @@ ones lost), and MoveIt places the world's objects in it.
 ## Mapping (FAST-LIO2)
 
 ```bash
-ros2 launch ranger_xarm6_navigation mapping.launch.py map:=~/ranger_xarm6_maps/lab.pcd
+ros2 launch ranger_xarm6_navigation mapping.launch.py map:=ranger_xarm6_navigation/maps/lab.pcd
 # drive around with the arm stowed (or at home), then:
 ros2 service call /robot_a/map_save std_srvs/srv/Trigger
 ```
@@ -155,7 +155,7 @@ it). On hardware the Mid-360 needs PTP time sync with the host.
 ## 2D grid
 
 ```bash
-ros2 run ranger_xarm6_navigation pcd_to_grid.py ~/ranger_xarm6_maps/artc_lab.pcd \
+ros2 run ranger_xarm6_navigation pcd_to_grid.py ranger_xarm6_navigation/maps/artc_lab.pcd \
   --origin 0.917 4.177 0.793 1.5708
 ```
 
@@ -184,7 +184,7 @@ EKF's drift, the way AMCL would on a 2D map. Once per map, the `.pcd` in
 the map frame (the same `--origin` as the grid, so the two line up):
 
 ```bash
-ros2 run ranger_xarm6_navigation pcd_to_map_frame.py ~/ranger_xarm6_maps/artc_lab.pcd \
+ros2 run ranger_xarm6_navigation pcd_to_map_frame.py ranger_xarm6_navigation/maps/artc_lab.pcd \
   --origin 0.917 4.177 0.793 1.5708          # -> artc_lab_map_frame.pcd (5 cm voxels)
 ```
 
@@ -195,7 +195,7 @@ localizer:
 ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false publish_odom_tf:=false \
   world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
 ros2 launch ranger_xarm6_navigation odometry.launch.py x:=0.94 y:=4.35 yaw:=-1.5708
-ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_maps/artc_lab.yaml \
+ros2 launch ranger_xarm6_navigation navigation.launch.py \
   localization:=ndt initial_pose:="0.94 4.35 -90"
 ```
 
@@ -251,7 +251,7 @@ example `above_cube_4` was typed in world coordinates while the map sits
 ```bash
 ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false \
   world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
-ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_maps/artc_lab.yaml
+ros2 launch ranger_xarm6_navigation navigation.launch.py        # map: maps/artc_lab.yaml (the default)
 ```
 
 Then **2D Goal Pose** in its RViz, or:

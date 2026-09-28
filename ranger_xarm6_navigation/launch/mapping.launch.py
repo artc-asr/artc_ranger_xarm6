@@ -4,7 +4,7 @@
 The robot (sim or real) comes from ranger_xarm6_description in another
 terminal. Drive it around (teleop, or MoveIt base goals), then save:
 
-    ros2 launch ranger_xarm6_navigation mapping.launch.py map:=~/ranger_xarm6_maps/lab.pcd
+    ros2 launch ranger_xarm6_navigation mapping.launch.py map:=ranger_xarm6_navigation/maps/lab.pcd
     ros2 service call /robot_a/map_save std_srvs/srv/Trigger
 
 The saved .pcd is the 3D map, in FAST-LIO's 'camera_init' frame: the IMU's
@@ -95,7 +95,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('robot_id', default_value='robot_a', description='ROS namespace + frame prefix; must match ranger_xarm6.launch.py'),
         DeclareLaunchArgument('use_sim_time', default_value='true', description='true with Gazebo, false on real hardware'),
-        DeclareLaunchArgument('map', default_value='~/ranger_xarm6_maps/map.pcd', description='Where map_save writes the 3D map (.pcd)'),
+        DeclareLaunchArgument('map', default_value='ranger_xarm6_navigation/maps/map.pcd',
+                              description="Where map_save writes the 3D map (.pcd); relative paths from where it's run (the repo root, README section 0)"),
         DeclareLaunchArgument('front_depth', default_value='true', description="Also record the front D435i's low obstacles (<map>_depth.pcd)"),
         DeclareLaunchArgument('base_height', default_value='0.315', description='base_link above the floor [m]'),
         OpaqueFunction(function=launch_setup),

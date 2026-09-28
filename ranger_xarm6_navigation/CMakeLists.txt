@@ -27,7 +27,7 @@ target_include_directories(obstacle_memory PRIVATE ${EIGEN3_INCLUDE_DIR})
 ament_target_dependencies(obstacle_memory rclcpp sensor_msgs tf2_ros)
 
 install(TARGETS livox_cloud_to_custom depth_to_cloud cloud_self_filter obstacle_memory DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config launch maps DESTINATION share/${PROJECT_NAME})
 install(PROGRAMS
   scripts/depth_mapper.py
   scripts/ekf_inputs.py

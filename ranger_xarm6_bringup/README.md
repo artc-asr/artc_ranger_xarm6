@@ -69,7 +69,7 @@ the app and export it over the file if you change it.
 |---|---|---|
 | `localization` | `static` | `ndt`: EKF + NDT scan-to-map (`ranger_xarm6_navigation`) |
 | `world`, `x`, `y`, `yaw` | `artc_lab.world`, home spot | spawn |
-| `map` | `~/ranger_xarm6_maps/artc_lab.yaml` | the 2D grid (with `ndt`, `<map>_map_frame.pcd` next to it) |
+| `map` | `ranger_xarm6_navigation/maps/artc_lab.yaml` | the 2D grid (with `ndt`, `<map>_map_frame.pcd` next to it) |
 | `base_drive` | `physics` | `kinematic`: the old teleported base |
 | `controller` | `moveit_sequential` | MoveIt's default mode (`moveit_whole_body`) |
 | `random_obstacles`, `obstacle_seed` | `0`, `-1` | boxes spawned at startup; also the buttons' count (5 if 0) and seed |
