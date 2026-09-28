@@ -7,7 +7,7 @@ odometry.launch.py's EKF. Sim, the artc_lab grid from pcd_to_grid.py:
 
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false \\
         world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
-    ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_maps/artc_lab.yaml
+    ros2 launch ranger_xarm6_navigation navigation.launch.py        # map: maps/artc_lab.yaml by default
 
 Then '2D Goal Pose' in RViz, or the navigate_to_pose action.
 
@@ -181,7 +181,9 @@ def launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('map', description='map_server .yaml of the 2D grid (scripts/pcd_to_grid.py)'),
+        DeclareLaunchArgument('map', default_value=os.path.join(get_package_share_directory('ranger_xarm6_navigation'),
+                                                                 'maps', 'artc_lab.yaml'),
+                              description="map_server .yaml of the 2D grid (scripts/pcd_to_grid.py); default: the sim's artc_lab (maps/)"),
         DeclareLaunchArgument('robot_id', default_value='robot_a', description='ROS namespace + frame prefix; must match ranger_xarm6.launch.py'),
         DeclareLaunchArgument('use_sim_time', default_value='true', description='true with Gazebo, false on real hardware'),
         DeclareLaunchArgument('localization', default_value='static',

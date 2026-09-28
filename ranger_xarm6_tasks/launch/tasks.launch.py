@@ -6,7 +6,7 @@ repo README's usage guide):
 
     ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false \\
         world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
-    ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_maps/artc_lab.yaml
+    ros2 launch ranger_xarm6_navigation navigation.launch.py
     ros2 launch ranger_xarm6_manipulation control.launch.py
     ros2 launch ranger_xarm6_tasks tasks.launch.py
 

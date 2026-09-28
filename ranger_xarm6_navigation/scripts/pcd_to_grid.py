@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """FAST-LIO .pcd map -> 2D occupancy grid for Nav2 (map_server .pgm + .yaml).
 
-    ros2 run ranger_xarm6_navigation pcd_to_grid.py ~/ranger_xarm6_maps/lab.pcd \\
+    ros2 run ranger_xarm6_navigation pcd_to_grid.py ranger_xarm6_navigation/maps/lab.pcd \\
         --origin 0.917 4.177 0.793 1.5708
 
 The .pcd is in FAST-LIO's 'camera_init' frame (the IMU's pose when

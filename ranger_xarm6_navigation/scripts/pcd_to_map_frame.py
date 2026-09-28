@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """FAST-LIO .pcd map -> the same points in the map frame, for the localizer.
 
-    ros2 run ranger_xarm6_navigation pcd_to_map_frame.py ~/ranger_xarm6_maps/lab.pcd \\
+    ros2 run ranger_xarm6_navigation pcd_to_map_frame.py ranger_xarm6_navigation/maps/lab.pcd \\
         --origin 0.917 4.177 0.793 1.5708
 
 The .pcd is in FAST-LIO's 'camera_init' frame; --origin is that frame's
