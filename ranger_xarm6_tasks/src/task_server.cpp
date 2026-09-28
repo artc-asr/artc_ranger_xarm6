@@ -2,7 +2,7 @@
 //
 //   action   <ns>/execute_task (btcpp_ros2_interfaces/ExecuteTree: target_tree = task name)
 //   service  <ns>/get_loaded_trees (the tasks loaded at the last goal or at startup)
-//   Groot2   live view on port groot2_port (1667) while a task runs
+//   live view on port groot2_port (1667) while a task runs (Groot2 protocol: klein-bt, Groot2)
 //
 // Every goal re-reads <tasks_dir>/trees/*.xml and <tasks_dir>/config/*.yaml,
 // so a tree saved in Groot2 or a waypoint just taught is used by the next

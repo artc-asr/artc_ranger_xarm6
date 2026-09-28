@@ -13,9 +13,9 @@ repo README's usage guide):
 Then a task by name:
 
     ros2 run ranger_xarm6_tasks run_task.py --list
-    ros2 run ranger_xarm6_tasks run_task.py DemoPickCube
+    ros2 run ranger_xarm6_tasks run_task.py DemoPickPlace
 
-and Groot2 (ranger_xarm6_tasks/README.md) to edit tasks and watch them run.
+Groot2 to edit tasks, klein-bt to watch them run (ranger_xarm6_tasks/README.md).
 
 tasks_dir: where trees/, config/ and the Groot2 project are; default the
 package's source folder (recorded at build), so what Groot2 saves and the
@@ -79,6 +79,6 @@ def generate_launch_description():
         DeclareLaunchArgument('robot_id', default_value='robot_a', description='ROS namespace + frame prefix; must match the robot'),
         DeclareLaunchArgument('use_sim_time', default_value='true', description='true with Gazebo, false on real hardware'),
         DeclareLaunchArgument('tasks_dir', default_value='', description="trees/ + config/ folder; '' = the package source"),
-        DeclareLaunchArgument('groot2_port', default_value='1667', description='Groot2 connects here to watch a running task'),
+        DeclareLaunchArgument('groot2_port', default_value='1667', description='Live view of a running task (Groot2 protocol): klein-bt connects here'),
         OpaqueFunction(function=launch_setup),
     ])

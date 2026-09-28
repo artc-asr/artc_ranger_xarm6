@@ -2,7 +2,8 @@
 
 Tasks for the Ranger Mini 3.0 + xArm6 as **behavior trees**: drag-and-drop
 steps in **Groot2** ("drive to this waypoint, turn the arm side to the
-table, pick, carry, place"), saved as XML, run by name. Every step is a
+table, pick, carry, place"), saved as XML, run by name, watched live in
+the browser with **klein-bt**. Every step is a
 client of an action the robot already serves (Nav2, MoveIt's `MoveToGoal`,
 the gripper), so no low-level code changes to make a new task. Waypoints
 and arm poses are **taught** by putting the robot there and saving.
@@ -36,7 +37,7 @@ git submodule update --init BehaviorTree.ROS2
 colcon build --packages-select btcpp_ros2_interfaces behaviortree_ros2 ranger_xarm6_manipulation ranger_xarm6_tasks
 ```
 
-**Groot2** (the editor/monitor, no install needed): download
+**Groot2** (the editor, no install needed): download
 `Groot2-v1.9.0-x86_64.AppImage` from https://www.behaviortree.dev/groot/,
 then
 
@@ -47,8 +48,18 @@ chmod +x ~/Applications/Groot2-*-x86_64.AppImage
 ```
 
 (Needs `libfuse2`, already installed here.) The free version edits
-without limits; **live monitoring shows trees of up to 20 nodes** (PRO,
-€590/year, lifts that).
+without limits. Its live monitor is limited to trees of up to 20 nodes
+(PRO, €590/year, lifts that), so tasks are watched with klein-bt instead.
+
+**klein-bt** (the live viewer, [johanubbink/klein-bt](https://github.com/johanubbink/klein-bt),
+MIT): a browser dashboard speaking the Groot2 monitor protocol that
+BehaviorTree.CPP ships, no tree size limit. Installed with pipx, in its
+own environment (not next to ROS's Python packages):
+
+```bash
+sudo apt install python3.10-venv pipx     # or: python3 -m pip install --user pipx
+pipx install git+https://github.com/johanubbink/klein-bt.git
+```
 
 ## 2. Start everything
 
@@ -69,9 +80,14 @@ ros2 launch ranger_xarm6_tasks tasks.launch.py
 ```
 
 Terminal 4 prints `Groot2 project: .../ranger_xarm6_tasks.btproj` when
-it's ready, and every step of a running task.
+it's ready, and every step of a running task. It only starts the task
+server and the gripper server: nothing moves until a task is run (3.).
 
 ## 3. Run a task
+
+In another terminal, set up like the four above (same
+`RMW_IMPLEMENTATION`: with a different one the goal is lost and
+`run_task.py` reports the task refused):
 
 ```bash
 ros2 run ranger_xarm6_tasks run_task.py --list          # Tasks: DemoPick DemoPickPlace DemoTurn GoHome GripperTest
@@ -114,37 +130,105 @@ is separate work.
 
 ## 4. Edit tasks in Groot2
 
-1. Start Groot2 (above). **File -> Open Project** (or the "Open Project"
-   button) -> `~/Worksplace/artc_ranger_xarm6/ranger_xarm6_tasks/ranger_xarm6_tasks.btproj`.
-2. The left panel lists the **trees** (the tasks, and the subtrees
-   `PickAt`, `PlaceAt`) and the **models**: every node below, with its
-   ports and their descriptions. Double-click a tree to open it.
-3. **Edit**: drag nodes from the models list onto the canvas, connect
-   them under a `Sequence` (steps in order: stops at the first failure),
-   `Fallback` (tries children until one succeeds), `RetryUntilSuccessful`,
-   `Parallel`, ... Click a node to fill in its ports (e.g. `waypoint` =
-   `table_ne_stage`). A value in braces, `{stage}`, reads a blackboard
-   entry: that's how subtrees take parameters.
-4. **New task**: add a tree (the "+" next to the trees list), name it (the
-   name is what `run_task.py` runs), build it, **save** (Ctrl-S). A new
-   tree must be saved in a file under `trees/` (any `*.xml` there is
-   loaded; one file can hold several trees).
-5. Run it: `run_task.py <Name>`. No restart needed.
+Two tools, one job each: **Groot2 edits** the trees (the XML files in
+`trees/`), **klein-bt watches** them run (5.). klein-bt can't edit; Groot2's
+free monitor stops at 20 nodes, so it isn't used for watching.
 
-The project file is regenerated when the task server starts (the tree
-files under `trees/` and the nodes' models), so the palette always
-matches the code; restart terminal 4 after adding a *file* so the project
-lists it (Groot2 can also add it: "Add existing file").
+**Open the project** (once per session): start Groot2 (1.), make sure it's
+in **Editor** mode (the mode buttons on the left: Editor / Monitor / Log),
+then **Open Project** -> `~/Worksplace/artc_ranger_xarm6/ranger_xarm6_tasks/ranger_xarm6_tasks.btproj`.
+The task server writes this file at startup (terminal 4), so start the
+task layer once before opening it; it doesn't have to stay running while
+you edit.
 
-**Watch a task live**: while a task runs, Groot2's **Monitor** mode ->
-connect to `localhost`, port `1667`. Nodes light up as they run
-(running / success / failure). The live view is created per run: connect
-after starting the task. Free Groot2: trees of up to 20 nodes (`DemoPick`
-is 11; `DemoPickPlace` with its subtrees is over 20). Not checked here:
-Groot2's GUI couldn't run in this session; the server's side (port 1667
-open while a task runs) was.
+The project panel then lists:
+- **Trees**: every `<BehaviorTree>` in `trees/*.xml`, i.e. the tasks
+  (`GoHome`, `DemoPickPlace`, ...) and the subtrees they reuse (`PickAt`,
+  `PlaceAt`). Double-click one to open it on the canvas.
+- **Models**: the nodes you can use: ours (6., with every port and its
+  description; hover or select one to read them) and BehaviorTree.CPP's
+  built-ins (`Sequence`, `Fallback`, `RetryUntilSuccessful`, `Sleep`, ...).
 
-## 5. The nodes
+**Change an existing task** (e.g. another waypoint in `DemoTurn`):
+1. Double-click the tree. Select a node: its ports show on the node,
+   type the new value (`waypoint` = `table_s_stage`). A value in braces,
+   `{stage}`, reads a blackboard entry instead of a literal: that's how a
+   subtree gets its parameters.
+2. **Add a step**: drag a node from Models onto the canvas and connect it:
+   drag from the parent's bottom connector to the new node's top one.
+   Children of a `Sequence` run left to right: the order on the canvas is
+   the order of the steps.
+3. **Remove a step**: select it, Delete.
+4. **Save**: Ctrl-S. Groot2 writes the tree back into its file under
+   `trees/`.
+5. **Run it**: `run_task.py <Name>`. The task server re-reads `trees/`
+   at every task: no restart, no rebuild.
+
+**Create a new task**:
+1. Add a tree (the "+" by the trees list) and give it a name: that name
+   is what `run_task.py` runs, so no spaces (`FetchFromKitchen`).
+2. Every tree starts from its root: connect one control node under it,
+   normally a `Sequence` (steps in order, stops at the first failure),
+   and the steps under that. Other controls: `Fallback` (tries children
+   until one succeeds), `RetryUntilSuccessful` (`num_attempts`),
+   `Parallel`.
+3. To reuse a whole pick or place, drag `PickAt` / `PlaceAt` from the
+   trees list: it becomes a `SubTree` node; set its parameters (`stage`,
+   `dock`, `above`, `grasp_dz` / `place_dz`) as `PickPlace.xml`'s
+   `DemoPickPlace` does.
+4. Save it in a file under `trees/` (a new file, or an existing one: one
+   file can hold several trees; any `*.xml` there is loaded).
+5. `run_task.py --list` shows it; run it, and watch it in klein-bt.
+
+Waypoint and arm pose names used in the ports (`table_ne_stage`,
+`above_cube_4`) come from `config/`: teach new ones first (7.).
+
+**Things to know**:
+- **Check `git diff trees/` after saving**: Groot2 rewrites the file it
+  saves (layout, attribute order), and may not keep the XML comments
+  that explain the example trees or a `SubTree` node's parameters. Keep
+  what you meant to change, restore the rest. Not checked here: Groot2's
+  GUI couldn't run where this was written.
+- **A tree file added outside Groot2** isn't in the project until the task
+  server restarts (terminal 4) and rewrites it, or you add it in Groot2
+  ("Add existing file"). The same restart refreshes the Models list after
+  a node is added in C++ (8.).
+- Nodes missing from Models, or ports that don't match the code: restart
+  terminal 4, then reopen the project.
+- Editing by hand works too: the files are plain BehaviorTree.CPP v4
+  XML, and the node table (6.) has every port.
+
+## 5. Watch a task live (klein-bt)
+
+klein-bt only views: edit and create trees in Groot2 (4.).
+
+```bash
+klein-bt                  # dashboard at http://localhost:8080, opens the browser
+ros2 run ranger_xarm6_tasks run_task.py DemoPickPlace
+```
+
+Start it any time, before or during a task: klein connects to the task
+server's port `1667`, which is open only while a task runs, and until
+then keeps retrying (`waiting for robot ...`). Once a task starts, the
+dashboard shows its tree, subtrees (`PickAt`, `PlaceAt`) expanded in
+place, nodes coloured as they run (running / success / failure), and the
+blackboards. When the task ends it waits again, and loads the next task's
+tree when that starts: leave it open across runs.
+
+- `--no-browser`: don't open a browser tab.
+- `--robot-host <ip>`: watch a robot on another machine (e.g. the real
+  robot's PC; port 1667 has to be reachable); `--port`: the dashboard's
+  port (8080).
+- A different port on the server: `tasks.launch.py groot2_port:=<port>`,
+  then `klein-bt --robot-port <port>`.
+
+Tested in sim (2026-09-28, klein-bt 0.5.0): connected on each task
+start, got the tree, its live status and the blackboard, and switched
+trees between runs, including a 2 s `GripperTest`. Not checked there:
+the browser view itself (the dashboard's data feed was), and a tree
+with subtrees.
+
+## 6. The nodes
 
 Angles in degrees. `pose`/`waypoint` names come from `config/`.
 
@@ -175,7 +259,7 @@ and a `BaseToPose` that leaves a dock needs `collision_monitor="never"`
 (as in `PickAt`/`PlaceAt`). With `never`, only MoveIt's 3D check of the
 room (the world's static models) applies: nothing the sensors see.
 
-## 6. Teach waypoints and arm poses
+## 7. Teach waypoints and arm poses
 
 **Waypoint** (where the base goes and which way it faces): drive the robot
 there (teleop, `NavigateToPose`, RViz 2D Goal Pose), then
@@ -204,11 +288,12 @@ keeping the rest and comments); you can also edit those files by hand.
 Named arm *joint* poses (`home`, `stow`) are MoveIt's: see the repo
 README, "Saving a new named pose".
 
-## 7. How it works
+## 8. How it works
 
 - `task_server` (`src/task_server.cpp`, BehaviorTree.ROS2's
   `TreeExecutionServer`): action `/robot_a/execute_task`, service
-  `/robot_a/get_loaded_trees`, Groot2 on port 1667. Re-reads `trees/` and
+  `/robot_a/get_loaded_trees`, live view (Groot2 protocol, for klein-bt)
+  on port 1667 while a task runs. Re-reads `trees/` and
   `config/` per task; refuses a task while one runs.
 - The nodes (`src/nodes.cpp`) are clients of `/robot_a/navigate_to_pose`,
   `/robot_a/mobile_manipulation/move_to_goal`, `/robot_a/gripper_command`

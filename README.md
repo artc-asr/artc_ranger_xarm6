@@ -12,7 +12,7 @@ Application code (e.g. [wbcc_mm](https://github.com/artc-asr/whole_body_complian
 | `ranger_xarm6_moveit_config` | MoveIt 2 config: the base as `base_x/y/theta` joints (crab and spin never mixed), the arm, and `whole_body`. |
 | `ranger_xarm6_manipulation` | MoveIt-based base + arm control (sequential or whole-body), `MoveToGoal` action. See its [README](ranger_xarm6_manipulation/README.md). |
 | `ranger_xarm6_navigation` | Odometry (EKF over wheel odometry + the Mid-360's IMU), FAST-LIO2 3D mapping with the front D435i's low obstacles, the 2D grid, and Nav2 (lidar + front D435i costmaps, collision monitor); a localizer is still to come. See its [README](ranger_xarm6_navigation/README.md). |
-| `ranger_xarm6_tasks` | Tasks as behavior trees (BehaviorTree.CPP v4), edited and watched in Groot2: taught waypoints and arm poses, steps over Nav2, MoveIt and the gripper, run by name. See its [README](ranger_xarm6_tasks/README.md). |
+| `ranger_xarm6_tasks` | Tasks as behavior trees (BehaviorTree.CPP v4), edited in Groot2 and watched live in klein-bt: taught waypoints and arm poses, steps over Nav2, MoveIt and the gripper, run by name. See its [README](ranger_xarm6_tasks/README.md). |
 | `BehaviorTree.ROS2` (submodule, `humble` branch) | BehaviorTree.CPP's ROS 2 layer: the task server (`TreeExecutionServer`, `ExecuteTree` action). |
 | `ranger_mini_v3_description` | Vendored — missing from upstream `ranger_ros2` for ROS 2 Humble at the time this was ported. |
 | `xarm_ros2` (submodule) | UFACTORY xArm6 description, ros2_control, and driver packages. |
@@ -461,12 +461,13 @@ goal lowering the fingertips to around the cube's middle (a 5 cm cube on
 a 0.75 m table: z ~0.78) -> `gripper.py close` (should report `holding
 something`) -> pose goal back up -> drive.
 
-### 6. Tasks: behavior trees in Groot2
+### 6. Tasks: behavior trees (Groot2, klein-bt)
 
 Whole jobs ("drive to the table, turn the arm side to it, pick the cube,
 carry it, put it down") as behavior trees: steps dragged together in
 **Groot2**, saved as XML in `ranger_xarm6_tasks/trees/`, run by name.
-Waypoints and arm poses are taught by putting the robot there and saving.
+Watched live in the browser with **klein-bt**. Waypoints and arm poses
+are taught by putting the robot there and saving.
 
 ```bash
 # Terminals 1-3: the robot (run_rviz:=false), Nav2 (section 3), MoveIt (section 4)
@@ -477,9 +478,10 @@ ros2 run ranger_xarm6_tasks run_task.py --list
 ros2 run ranger_xarm6_tasks run_task.py DemoPickPlace       # Ctrl-C cancels
 ros2 run ranger_xarm6_tasks save_waypoint.py <name>         # teach where the base is
 ros2 run ranger_xarm6_tasks save_arm_pose.py <name>         # teach where the gripper is
+klein-bt                                                    # watch it: http://localhost:8080
 ```
 
-Groot2 setup, editing and live monitoring, every step type and the
+Groot2 and klein-bt setup, editing, live monitoring, every step type and the
 example tasks: [ranger_xarm6_tasks/README.md](ranger_xarm6_tasks/README.md).
 
 ### 7. Troubleshooting
