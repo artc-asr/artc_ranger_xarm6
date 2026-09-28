@@ -10,11 +10,15 @@ meshes are skipped) as one moveit_msgs/CollisionObject on
 Non-static models (e.g. artc_lab.world's cubes) are left out: they move,
 and a stale copy would block the arm from reaching them.
 
-Poses are in frame_id (the robot's odom frame): gz-sim's world origin and
-odom coincide, since base_pose_publisher.py starts odom -> base_link at
-the spawn pose and teleports the gz entity to follow it.
+The world file's poses are in world_frame (the map frame: gz-sim's world
+origin is the map's). They're sent in frame_id, MoveIt's planning frame
+(odom), through the current map -> odom (map_to_odom.py): MoveIt converts
+an object into its planning frame once, when it arrives, so with the EKF
+and a localizer (odom drifts, map -> odom corrects it) they're sent again
+whenever map -> odom (smoothed, 5 s) has moved 2 cm or 0.6 deg. Without a map frame (no
+Nav2), map = odom, right for the sim's ground-truth odom.
 
-move_group's subscription keeps no history, so the objects are
+move_group's subscription keeps no history, so the objects are also
 (re)published whenever the number of subscribers grows: whenever
 move_group starts or restarts, it gets the world. ADD replaces an object
 of the same id, so repeats are harmless.
@@ -27,6 +31,8 @@ from moveit_msgs.msg import CollisionObject
 from rclpy.node import Node
 from shape_msgs.msg import SolidPrimitive
 from tf_transformations import euler_matrix, quaternion_from_matrix
+
+from map_to_odom import MapToOdom
 
 
 def pose_matrix(text):
@@ -56,13 +62,15 @@ class WorldCollisionObjects(Node):
         super().__init__('world_collision_objects')
         world_file = self.declare_parameter('world_file', '').value
         self.frame_id = self.declare_parameter('frame_id', 'odom').value
+        world_frame = self.declare_parameter('world_frame', 'map').value
         self.objects = self.load(world_file)
+        self.map_to_odom = MapToOdom(self, world_frame, self.frame_id)
         self.pub = self.create_publisher(CollisionObject, 'collision_object', 10)
         self.subscribers = 0
-        self.create_timer(1.0, self.check_subscribers)
+        self.create_timer(1.0, self.check)
         self.get_logger().info(
-            f"{len(self.objects)} static models from '{world_file}' -> collision_object ({self.frame_id}): "
-            f"{', '.join(o.id for o in self.objects)}")
+            f"{len(self.objects)} static models from '{world_file}' ({world_frame}) -> collision_object "
+            f"({self.frame_id}): {', '.join(o[0] for o in self.objects)}")
 
     def load(self, path):
         world = ET.parse(path).getroot().find('world')
@@ -70,8 +78,7 @@ class WorldCollisionObjects(Node):
         for model in world.findall('model'):
             if model.findtext('static', 'false').strip() not in ('true', '1'):
                 continue
-            obj = CollisionObject(id=f'world/{model.get("name")}', operation=CollisionObject.ADD)
-            obj.header.frame_id = self.frame_id
+            parts = []  # (shape, pose in the world frame)
             model_m = pose_matrix(model.findtext('pose'))
             for link in model.findall('link'):
                 link_m = model_m @ pose_matrix(link.findtext('pose'))
@@ -79,24 +86,32 @@ class WorldCollisionObjects(Node):
                     shape = primitive(collision.find('geometry'))
                     if shape is None:
                         continue
-                    m = link_m @ pose_matrix(collision.findtext('pose'))
+                    parts.append((shape, link_m @ pose_matrix(collision.findtext('pose'))))
+            if parts:
+                objects.append((f'world/{model.get("name")}', parts))
+        return objects
+
+    def check(self):
+        count = self.pub.get_subscription_count()
+        m = self.map_to_odom.update()
+        if count > self.subscribers or (count and self.map_to_odom.moved()):
+            for name, parts in self.objects:
+                obj = CollisionObject(id=name, operation=CollisionObject.ADD)
+                obj.header.frame_id = self.frame_id
+                obj.header.stamp = self.get_clock().now().to_msg()
+                for shape, world_m in parts:
+                    p = m @ world_m
                     pose = Pose()
-                    pose.position.x, pose.position.y, pose.position.z = (float(v) for v in m[:3, 3])
-                    qx, qy, qz, qw = quaternion_from_matrix(m)
+                    pose.position.x, pose.position.y, pose.position.z = (float(v) for v in p[:3, 3])
+                    qx, qy, qz, qw = quaternion_from_matrix(p)
                     pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w = qx, qy, qz, qw
                     obj.primitives.append(shape)
                     obj.primitive_poses.append(pose)
-            if obj.primitives:
-                objects.append(obj)
-        return objects
-
-    def check_subscribers(self):
-        count = self.pub.get_subscription_count()
-        if count > self.subscribers:
-            for obj in self.objects:
-                obj.header.stamp = self.get_clock().now().to_msg()
                 self.pub.publish(obj)
-            self.get_logger().info(f'Published {len(self.objects)} collision objects ({count} subscriber(s))')
+            self.map_to_odom.mark_sent()
+            self.get_logger().info(
+                f'Published {len(self.objects)} collision objects ({count} subscriber(s)), '
+                f'map -> odom at ({m[0, 3]:.3f}, {m[1, 3]:.3f})')
         self.subscribers = count
 
 

@@ -22,10 +22,10 @@ asked which models exist; the new ones' box/cylinder/sphere visuals are
 added at the pose they have then, and removed ones deleted. Models named
 in ignore_models (the robot) are left out.
 
-Markers are published in frame_id (the robot's odom frame): gz-sim's
-world origin and odom coincide, since base_pose_publisher.py starts
-odom->base_link at the spawn pose and teleports the gz entity to follow
-it. Header stamps are left at zero so RViz always uses the latest TF
+gz-sim's world is the map frame (world_frame); markers are published in
+frame_id (odom, the description RViz's fixed frame) through the current
+map -> odom, and again when it moves (map_to_odom.py: with the EKF and a
+localizer odom drifts; without a map frame, map = odom). Header stamps are left at zero so RViz always uses the latest TF
 rather than waiting on sim-time lookups.
 """
 import threading
@@ -39,6 +39,8 @@ from tf_transformations import euler_matrix, quaternion_from_matrix, quaternion_
 from visualization_msgs.msg import Marker, MarkerArray
 
 from gz.transport13 import Node as GzNode
+
+from map_to_odom import MapToOdom
 from gz.msgs10.empty_pb2 import Empty
 from gz.msgs10.pose_v_pb2 import Pose_V
 from gz.msgs10.scene_pb2 import Scene
@@ -77,6 +79,7 @@ class WorldMarkers(Node):
 
         world_file = self.get_parameter('world_file').value
         self.frame_id = self.get_parameter('frame_id').value
+        self.map_to_odom = MapToOdom(self, self.declare_parameter('world_frame', 'map').value, self.frame_id)
         world = ET.parse(world_file).getroot().find('world')
         self.gz_world = world.get('name')
 
@@ -119,6 +122,8 @@ class WorldMarkers(Node):
         if self.dynamic:
             self.gz_node.subscribe(Pose_V, f'/world/{self.gz_world}/dynamic_pose/info', self.on_poses)
             self.create_timer(1.0 / self.get_parameter('rate').value, self.publish)
+        else:
+            self.create_timer(1.0, self.republish_if_moved)
         period = self.get_parameter('runtime_period').value
         if period > 0:
             threading.Thread(target=self.watch_runtime_models, args=(period,), daemon=True).start()
@@ -224,7 +229,15 @@ class WorldMarkers(Node):
                     m[:3, 3] = [p.position.x, p.position.y, p.position.z]
                     self.models[p.name] = m, self.models[p.name][1]
 
+    def republish_if_moved(self):
+        """Static models only: again when map -> odom has moved."""
+        self.map_to_odom.update()
+        if self.map_to_odom.moved():
+            self.publish()
+
     def publish(self):
+        to_odom = self.map_to_odom.update()
+        self.map_to_odom.mark_sent()
         out = MarkerArray()
         with self.lock:
             for marker in self.deleted:
@@ -233,7 +246,7 @@ class WorldMarkers(Node):
             self.deleted = []
             for model_m, parts in self.models.values():
                 for marker, local_m in parts:
-                    world_m = model_m @ local_m
+                    world_m = to_odom @ model_m @ local_m
                     marker.header.frame_id = self.frame_id
                     marker.pose.position.x, marker.pose.position.y, marker.pose.position.z = world_m[:3, 3]
                     qx, qy, qz, qw = quaternion_from_matrix(world_m)

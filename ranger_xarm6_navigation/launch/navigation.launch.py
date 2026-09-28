@@ -11,10 +11,19 @@ odometry.launch.py's EKF. Sim, the artc_lab grid from pcd_to_grid.py:
 
 Then '2D Goal Pose' in RViz, or the navigate_to_pose action.
 
-map -> odom: there's no localizer yet. static_map_to_odom:=true (the
-default) publishes an identity map -> odom, right in sim, where odom is
-Gazebo's world frame and the grid is exported in it. Odometry drift
-isn't corrected.
+map -> odom, localization:=
+  static (default): an identity map -> odom, right in sim, where odom is
+    Gazebo's world frame and the grid is exported in it; odometry drift
+    isn't corrected. (static_map_to_odom:=false: none at all.)
+  ndt: lidar_localization_ros2 (submodule) matches the Mid-360's cloud
+    (without the arm) against the FAST-LIO map in the map frame
+    (localization_map, default <map>_map_frame.pcd next to the grid, from
+    scripts/pcd_to_map_frame.py) and publishes map -> odom (x, y, yaw:
+    scripts/planar_map_to_odom.py), correcting
+    the EKF's drift (run odometry.launch.py, and the robot with
+    publish_odom_tf:=false). Where it starts: initial_pose:="x y yaw_deg"
+    in the map frame (in sim, the spawn pose), else RViz's 2D Pose
+    Estimate. config/localization.yaml.
 
 Nodes (in the robot's namespace): front_depth_to_cloud + front_obstacle_memory
 (front_depth.launch.py: the front D435i's depth image -> a 5 cm-voxel cloud
@@ -28,6 +37,7 @@ robot_id robot_a; its "robot_a" is replaced with the robot_id given here.
 Not the nav2_bringup launch: it remaps /tf into the namespace, and this
 robot's TF is global.
 """
+import math
 import os
 import tempfile
 
@@ -66,6 +76,9 @@ def launch_setup(context, *args, **kwargs):
     robot_id = LaunchConfiguration('robot_id').perform(context)
     use_sim_time = LaunchConfiguration('use_sim_time').perform(context).lower() in ('true', '1', 'yes')
     static_map_to_odom = LaunchConfiguration('static_map_to_odom').perform(context).lower() in ('true', '1', 'yes')
+    localization = LaunchConfiguration('localization').perform(context)
+    if localization not in ('static', 'ndt'):
+        raise ValueError(f"localization must be 'static' or 'ndt', got {localization!r}")
     use_rviz = LaunchConfiguration('use_rviz').perform(context).lower() in ('true', '1', 'yes')
     map_yaml = os.path.abspath(os.path.expanduser(LaunchConfiguration('map').perform(context)))
     prefix = f'{robot_id}_' if robot_id else ''
@@ -113,7 +126,45 @@ def launch_setup(context, *args, **kwargs):
             'memory': 'true',
         }.items(),
     ))
-    if static_map_to_odom:
+    if localization == 'ndt':
+        pcd = LaunchConfiguration('localization_map').perform(context) or os.path.splitext(map_yaml)[0] + '_map_frame.pcd'
+        pcd = os.path.abspath(os.path.expanduser(pcd))
+        if not os.path.exists(pcd):
+            raise FileNotFoundError(f'{pcd}: make it with scripts/pcd_to_map_frame.py (the .pcd and pcd_to_grid.py\'s --origin)')
+        loc_params = {'map_path': pcd}
+        initial_pose = LaunchConfiguration('initial_pose').perform(context).split()
+        if initial_pose:
+            x, y, yaw_deg = (float(v) for v in initial_pose)
+            yaw = math.radians(yaw_deg)
+            loc_params.update(set_initial_pose=True, initial_pose_x=x, initial_pose_y=y, initial_pose_z=0.0,
+                              initial_pose_qx=0.0, initial_pose_qy=0.0,
+                              initial_pose_qz=math.sin(yaw / 2), initial_pose_qw=math.cos(yaw / 2))
+        nodes += [
+            Node(package='lidar_localization_ros2', executable='lidar_localization_node', name='lidar_localization',
+                 namespace=robot_id,
+                 parameters=[_for_robot(os.path.join(share, 'config', 'localization.yaml'), robot_id, '.yaml'),
+                             common, loc_params],
+                 # Its 'map' is a PointCloud2 topic (unused with a .pcd):
+                 # not map_server's grid.
+                 remappings=[('cloud', 'livox/lidar_self_filtered'), ('map', 'localization/map_cloud'),
+                             ('initial_map', 'localization/initial_map'), ('odom', 'odometry/filtered'),
+                             ('initialpose', 'localization/initialpose')],
+                 output='screen'),
+            # map -> odom from it, planar (see the script), and RViz's 2D
+            # Pose Estimate relayed to it.
+            Node(package='ranger_xarm6_navigation', executable='planar_map_to_odom.py', namespace=robot_id,
+                 parameters=[common, {'map_frame': f'{prefix}map', 'ndt_frame': f'{prefix}map_3d',
+                                      'odom_frame': f'{prefix}odom'}],
+                 output='screen'),
+            # It's a lifecycle node without Nav2's bond: its own manager,
+            # bond off.
+            Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
+                 name='lifecycle_manager_localization', namespace=robot_id,
+                 parameters=[common, {'autostart': True, 'node_names': ['lidar_localization'],
+                                      'bond_timeout': 0.0}],
+                 output='screen'),
+        ]
+    elif static_map_to_odom:
         nodes.append(Node(
             package='tf2_ros', executable='static_transform_publisher', name='map_to_odom', namespace=robot_id,
             arguments=['--frame-id', f'{prefix}map', '--child-frame-id', f'{prefix}odom'],
@@ -133,8 +184,14 @@ def generate_launch_description():
         DeclareLaunchArgument('map', description='map_server .yaml of the 2D grid (scripts/pcd_to_grid.py)'),
         DeclareLaunchArgument('robot_id', default_value='robot_a', description='ROS namespace + frame prefix; must match ranger_xarm6.launch.py'),
         DeclareLaunchArgument('use_sim_time', default_value='true', description='true with Gazebo, false on real hardware'),
+        DeclareLaunchArgument('localization', default_value='static',
+                              description="map -> odom: 'static' (identity, right in sim) or 'ndt' (lidar_localization_ros2 against the FAST-LIO map)"),
+        DeclareLaunchArgument('localization_map', default_value='',
+                              description="ndt: the map-frame .pcd (scripts/pcd_to_map_frame.py); '' = <map>_map_frame.pcd"),
+        DeclareLaunchArgument('initial_pose', default_value='',
+                              description="ndt: where the robot starts, 'x y yaw_deg' in the map frame; '' = RViz 2D Pose Estimate"),
         DeclareLaunchArgument('static_map_to_odom', default_value='true',
-                              description='Identity map -> odom (no localizer yet; right in sim, where odom is the world frame)'),
+                              description='localization:=static only: false = no map -> odom at all'),
         DeclareLaunchArgument('params_file', default_value='', description="Nav2 parameters, written for robot_a; '' = config/nav2.yaml"),
         DeclareLaunchArgument('front_depth_image', default_value='',
                               description="Front D435i depth image topic; '' = the sim's, or realsense2_camera's with use_sim_time:=false"),

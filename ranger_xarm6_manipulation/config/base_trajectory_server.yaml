@@ -19,3 +19,7 @@
     still_xy: 0.005              # m in total: below = not translating
     still_yaw: 0.01              # rad in total: below = not rotating
     control_rate: 20.0           # Hz
+    # auto: through ranger_xarm6_navigation's collision_monitor while it
+    # runs (it listens on cmd_vel_smoothed), else straight to cmd_vel.
+    # always | never. See base_trajectory_server.py.
+    collision_monitor: auto

@@ -1,0 +1,52 @@
+# lidar_localization_ros2 (submodule), NDT scan-to-map against the
+# FAST-LIO map in the map frame (scripts/pcd_to_map_frame.py): publishes
+# map -> odom on top of the EKF's odom -> base_link, the way AMCL would.
+# navigation.launch.py localization:=ndt starts it; map_path and the
+# initial pose come from there. Written for robot_a (the launch renames).
+#
+# Only its NDT core: prediction from the odom TF (the EKF already fuses
+# wheel odometry and the Mid-360's IMU), no IMU preintegration, smoother or
+# continuous-time deskew (the sim's lidar cloud has no per-point times).
+lidar_localization:
+  ros__parameters:
+    # Its own frame: planar_map_to_odom.py makes map -> odom from it, x, y
+    # and yaw only (its z, roll and pitch follow the map's height drift).
+    global_frame_id: robot_a_map_3d
+    odom_frame_id: robot_a_odom
+    base_frame_id: robot_a_base_link
+
+    registration_method: NDT_OMP
+    ndt_resolution: 1.0
+    ndt_step_size: 0.1
+    ndt_num_threads: 4
+    ndt_max_iterations: 35
+    transform_epsilon: 0.01
+    score_threshold: 2.0            # NDT fitness above this: rejected, map -> odom held
+    reject_above_score_threshold: true
+
+    # The cloud: livox/lidar_self_filtered (the arm removed, 5 cm voxels,
+    # navigation.launch.py's lidar_self_filter).
+    voxel_leaf_size: 0.1
+    enable_scan_voxel_filter: true
+    scan_min_range: 0.3
+    scan_max_range: 30.0
+    scan_period: 0.1
+
+    use_pcd_map: true
+    map_path: ""
+
+    enable_map_odom_tf: true
+    # Re-stamp the last good map -> odom at 20 Hz (like AMCL's
+    # transform_tolerance), not only at each scan: Nav2 looks the robot up
+    # at the newest odom time, and a scan-stamped map -> odom lagging
+    # ~70 ms behind failed those lookups and aborted a goal.
+    enable_timer_publishing: true
+    pose_publish_frequency: 20.0
+    publish_bridge_pose_when_lost: true
+    use_odom_tf_prediction: true
+    use_odom: false
+    use_twist_prediction: false
+    use_imu: false
+    use_continuous_time_deskew: false
+    predict_pose_from_previous_delta: true
+    enable_debug: false

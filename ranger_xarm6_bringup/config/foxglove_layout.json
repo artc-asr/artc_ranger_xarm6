@@ -1,0 +1,276 @@
+{
+  "configById": {
+    "3D!robot": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 9,
+        "phi": 55,
+        "thetaOffset": 90,
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.1,
+        "far": 500
+      },
+      "followMode": "follow-position",
+      "followTf": "robot_a_base_link",
+      "scene": {
+        "transforms": {
+          "showLabel": false,
+          "axisScale": 0.4
+        },
+        "meshUpAxis": "z_up"
+      },
+      "transforms": {},
+      "layers": {
+        "grid": {
+          "visible": true,
+          "layerId": "foxglove.Grid",
+          "frameLocked": true,
+          "label": "Grid",
+          "instanceId": "grid",
+          "size": 12,
+          "divisions": 12,
+          "lineWidth": 1,
+          "color": "#248eff40",
+          "position": [
+            5,
+            2.6,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        },
+        "robot": {
+          "visible": true,
+          "layerId": "foxglove.Urdf",
+          "label": "Robot",
+          "instanceId": "robot",
+          "sourceType": "topic",
+          "topic": "/robot_a/robot_description",
+          "framePrefix": "",
+          "displayMode": "auto",
+          "fallbackColor": "#ffffff"
+        }
+      },
+      "topics": {
+        "/robot_a/map": {
+          "visible": true,
+          "colorMode": "map",
+          "alpha": 0.6
+        },
+        "/robot_a/global_costmap/costmap": {
+          "visible": true,
+          "colorMode": "costmap",
+          "alpha": 0.35
+        },
+        "/robot_a/local_costmap/costmap": {
+          "visible": true,
+          "colorMode": "costmap",
+          "alpha": 0.5
+        },
+        "/robot_a/local_costmap/published_footprint": {
+          "visible": true,
+          "lineWidth": 0.02,
+          "color": "#00ff00ff"
+        },
+        "/robot_a/plan": {
+          "visible": true,
+          "lineWidth": 0.04,
+          "gradient": [
+            "#ff9800ff",
+            "#ff9800ff"
+          ]
+        },
+        "/robot_a/world_markers": {
+          "visible": true
+        },
+        "/robot_a/livox/lidar_self_filtered": {
+          "visible": true,
+          "pointSize": 2,
+          "colorField": "z",
+          "colorMode": "colormap",
+          "colorMap": "turbo"
+        },
+        "/robot_a/pcl_pose": {
+          "visible": true,
+          "type": "arrow",
+          "arrowScale": [
+            0.5,
+            0.06,
+            0.06
+          ],
+          "color": "#e040fbff"
+        },
+        "/robot_a/goal_pose": {
+          "visible": true,
+          "type": "arrow",
+          "color": "#00e5ffff"
+        }
+      },
+      "publish": {
+        "type": "pose",
+        "poseTopic": "/robot_a/goal_pose",
+        "pointTopic": "/robot_a/clicked_point",
+        "poseEstimateTopic": "/robot_a/initialpose",
+        "poseEstimateXDeviation": 0.25,
+        "poseEstimateYDeviation": 0.25,
+        "poseEstimateThetaDeviation": 0.13
+      },
+      "imageMode": {}
+    },
+    "Image!front": {
+      "cameraState": {
+        "distance": 20,
+        "perspective": true,
+        "phi": 60,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "thetaOffset": 45,
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {
+        "type": "point"
+      },
+      "imageMode": {
+        "imageTopic": "/robot_a/fixed_cam1_camera/color/image_raw"
+      }
+    },
+    "Image!wrist": {
+      "cameraState": {
+        "distance": 20,
+        "perspective": true,
+        "phi": 60,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "thetaOffset": 45,
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {
+        "type": "point"
+      },
+      "imageMode": {
+        "imageTopic": "/robot_a/wrist_camera/color/image_raw"
+      }
+    },
+    "RosOut!log": {
+      "searchTerms": [
+        "ranger_xarm6_tasks",
+        "bt_navigator",
+        "mobile_manipulation_coordinator",
+        "obstacle_spawner"
+      ],
+      "minLogLevel": 2
+    },
+    "CallService!respawn": {
+      "serviceName": "/robot_a/obstacles/respawn",
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "timeoutSeconds": 30,
+      "editingMode": false,
+      "buttonText": "Respawn obstacles",
+      "buttonTooltip": "Clear the random boxes and spawn a new layout (count: the spawner's 'count' parameter)",
+      "buttonColor": "#2e7d32"
+    },
+    "CallService!clear": {
+      "serviceName": "/robot_a/obstacles/clear",
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "timeoutSeconds": 30,
+      "editingMode": false,
+      "buttonText": "Clear obstacles",
+      "buttonTooltip": "Remove the random boxes",
+      "buttonColor": "#c62828"
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "first": "3D!robot",
+    "second": {
+      "first": {
+        "first": "Image!front",
+        "second": "Image!wrist",
+        "direction": "row",
+        "splitPercentage": 50
+      },
+      "second": {
+        "first": {
+          "first": "CallService!respawn",
+          "second": "CallService!clear",
+          "direction": "row",
+          "splitPercentage": 50
+        },
+        "second": "RosOut!log",
+        "direction": "column",
+        "splitPercentage": 28
+      },
+      "direction": "column",
+      "splitPercentage": 45
+    },
+    "direction": "row",
+    "splitPercentage": 62
+  }
+}

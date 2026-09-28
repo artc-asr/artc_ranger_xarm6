@@ -34,6 +34,7 @@
   <exec_depend>sensor_msgs_py</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-scipy</exec_depend>
+  <exec_depend>lidar_localization_ros2</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

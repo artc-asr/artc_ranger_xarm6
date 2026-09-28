@@ -8,7 +8,9 @@ against the planning scene.
 | Node | What it does |
 |---|---|
 | `mobile_manipulation_coordinator.py` | `MoveToGoal` action server. Runs the stages, switches the arm to `arm_trajectory_controller`, fills MoveIt's planning scene (floor + the Gazebo world's static models). |
-| `base_trajectory_server.py` | `FollowJointTrajectory` server for the base (`base_trajectory_controller/follow_joint_trajectory`). Tracks MoveIt's base trajectories in time on `cmd_vel`. |
+| `base_trajectory_server.py` | `FollowJointTrajectory` server for the base (`base_trajectory_controller/follow_joint_trajectory`). Tracks MoveIt's base trajectories in time on `cmd_vel`, or, while `ranger_xarm6_navigation`'s collision monitor runs, through it (`cmd_vel_smoothed`; parameter `collision_monitor`: auto / never / always). |
+| `gripper_action_server.py` | `control_msgs/GripperCommand` on `gripper_command`: position = drive_joint (0 open .. 0.85 closed, rad); result `stalled` = holding something. Started by `ranger_xarm6_tasks`' `tasks.launch.py`. |
+| `gripper.py`, `arm_joints.py` | CLI: open/close the gripper; print the arm's joints as an SRDF named pose. |
 
 ## The base never translates and rotates at once
 
@@ -43,6 +45,15 @@ each so the wheels can re-steer.
   has a collision-free IK solution (if that's where the base already is,
   only the arm moves).
 - **DEFAULT** (`mode: 0`): whichever `control.launch.py` was started with.
+
+<!-- SCREENSHOT: the two modes side by side, ideally two short GIFs of the same goal: SEQUENTIAL (arm stowed while the base crabs, then the arm moves) and WHOLE_BODY (base and arm moving together).
+     Save as: screenshots/mode_sequential.gif + screenshots/mode_whole_body.gif
+     Then replace this comment with:
+     <p>
+       <img src="../screenshots/mode_sequential.gif" width="49%" alt="SEQUENTIAL: arm stowed, then base, then arm">
+       <img src="../screenshots/mode_whole_body.gif" width="49%" alt="WHOLE_BODY: base and arm together">
+     </p>
+-->
 
 ## Run (sim)
 

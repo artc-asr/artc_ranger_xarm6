@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Written by ranger_xarm6_tasks' task_server at startup: the trees in trees/ and the
+     task nodes' ports. Open this in Groot2. -->
+<root BTCPP_format="4" project_name="ranger_xarm6_tasks">
+    <include path="trees/Basics.xml"/>
+    <include path="trees/PickPlace.xml"/>
+    <TreeNodesModel>
+        <Action ID="ArmToNamedPose">
+            <input_port name="velocity_scaling" type="double" default="0.000000">0..1; 0 = default (0.3)</input_port>
+            <input_port name="pose" type="std::string" default="stow">SRDF named pose: home, stow, ...</input_port>
+        </Action>
+        <Action ID="ArmToPose">
+            <input_port name="offset_z" type="double" default="0.000000">added to z (e.g. 0.05 to hover above)</input_port>
+            <input_port name="orientation" type="std::string" default="down">for x/y/z: down | down:&lt;deg&gt; | qx qy qz qw</input_port>
+            <input_port name="frame" type="std::string" default="">for x/y/z; default: the map frame. base_link = relative to where the base ends up</input_port>
+            <input_port name="z" type="double">m</input_port>
+            <input_port name="velocity_scaling" type="double" default="0.000000">0..1; 0 = default (0.3)</input_port>
+            <input_port name="y" type="double">m</input_port>
+            <input_port name="x" type="double">m</input_port>
+            <input_port name="pose" type="std::string" default="">A taught arm pose (config/arm_poses.yaml); or leave empty and give x, y, z</input_port>
+        </Action>
+        <Action ID="BaseToPose">
+            <input_port name="collision_monitor" type="std::string" default="auto">auto: the base's motion goes through the collision monitor while Nav2 runs | never: MoveIt's 3D check of the room only (docking under a tabletop) | always</input_port>
+            <input_port name="mode" type="std::string" default="sequential">sequential: the arm stows first | whole_body: it stays</input_port>
+            <input_port name="frame" type="std::string" default="">for x/y/yaw; default: the map frame</input_port>
+            <input_port name="yaw_deg" type="double">deg</input_port>
+            <input_port name="velocity_scaling" type="double" default="0.000000">0..1; 0 = default (0.3)</input_port>
+            <input_port name="y" type="double">m</input_port>
+            <input_port name="x" type="double">m</input_port>
+            <input_port name="waypoint" type="std::string" default="">A taught waypoint; or leave empty and give x, y, yaw_deg</input_port>
+        </Action>
+        <Action ID="Gripper">
+            <input_port name="expect" type="std::string" default="any">any | holding: fail if nothing was grasped | empty: fail if something was</input_port>
+            <input_port name="command" type="std::string" default="open">open | close | drive_joint in rad (0..0.85)</input_port>
+        </Action>
+        <Action ID="NavigateToPose">
+            <input_port name="frame" type="std::string" default="">default: the map frame</input_port>
+            <input_port name="yaw_deg" type="double" default="0.000000">heading, deg</input_port>
+            <input_port name="y" type="double">m</input_port>
+            <input_port name="x" type="double">m</input_port>
+        </Action>
+        <Action ID="NavigateToWaypoint">
+            <input_port name="waypoint" type="std::string">A taught waypoint (config/waypoints.yaml)</input_port>
+        </Action>
+        <Action ID="Say">
+            <input_port name="message" type="std::string" default="">logged by the task server</input_port>
+        </Action>
+        <Action ID="TurnBase">
+            <input_port name="velocity_scaling" type="double" default="0.000000">0..1; 0 = default (0.3)</input_port>
+            <input_port name="collision_monitor" type="std::string" default="auto">auto: the base's motion goes through the collision monitor while Nav2 runs | never: MoveIt's 3D check of the room only (docking under a tabletop) | always</input_port>
+            <input_port name="mode" type="std::string" default="sequential">sequential: the arm stows first | whole_body: it stays</input_port>
+            <input_port name="angle_deg" type="double">relative: turn by this much, deg (+ = left)</input_port>
+            <input_port name="yaw_deg" type="double">absolute heading in the map frame, deg</input_port>
+            <input_port name="back_towards" type="std::string" default="">A waypoint or arm pose name: turn so the arm side (the back) faces it</input_port>
+        </Action>
+        <Action ID="WholeBodyToPose">
+            <input_port name="offset_z" type="double" default="0.000000">added to z (e.g. 0.05 to hover above)</input_port>
+            <input_port name="orientation" type="std::string" default="down">for x/y/z: down | down:&lt;deg&gt; | qx qy qz qw</input_port>
+            <input_port name="frame" type="std::string" default="">for x/y/z; default: the map frame. base_link = relative to where the base ends up</input_port>
+            <input_port name="z" type="double">m</input_port>
+            <input_port name="velocity_scaling" type="double" default="0.000000">0..1; 0 = default (0.3)</input_port>
+            <input_port name="y" type="double">m</input_port>
+            <input_port name="x" type="double">m</input_port>
+            <input_port name="pose" type="std::string" default="">A taught arm pose (config/arm_poses.yaml); or leave empty and give x, y, z</input_port>
+            <input_port name="collision_monitor" type="std::string" default="never">auto: the base's motion goes through the collision monitor while Nav2 runs | never: MoveIt's 3D check of the room only (docking under a tabletop) | always</input_port>
+            <input_port name="base_waypoint" type="std::string" default="">Where the base goes (a taught waypoint); empty = the base position is chosen at the current heading</input_port>
+        </Action>
+    </TreeNodesModel>
+</root>

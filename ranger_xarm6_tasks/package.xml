@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>ranger_xarm6_tasks</name>
+  <version>0.1.0</version>
+  <description>Task layer for the Ranger Mini 3.0 + xArm6: behavior trees (BehaviorTree.CPP v4, edited in Groot2) over Nav2, MoveIt (MoveToGoal) and the gripper; taught waypoints and arm poses.</description>
+  <maintainer email="thinkminator1024@gmail.com">wbcc_mm maintainer</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>behaviortree_cpp</depend>
+  <depend>behaviortree_ros2</depend>
+  <depend>btcpp_ros2_interfaces</depend>
+  <depend>nav2_msgs</depend>
+  <depend>control_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>ranger_xarm6_manipulation</depend>
+  <depend>yaml_cpp_vendor</depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -16,6 +16,7 @@ install(PROGRAMS
   scripts/mobile_manipulation_coordinator.py
   scripts/gripper.py
   scripts/arm_joints.py
+  scripts/gripper_action_server.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
