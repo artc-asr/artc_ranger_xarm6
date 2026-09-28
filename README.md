@@ -11,7 +11,7 @@ Application code (e.g. [wbcc_mm](https://github.com/artc-asr/whole_body_complian
 | `ranger_xarm6_description` | Combined description + bringup launch. Joins the base and arm through a fixed mount transform; `ranger_xarm6.launch.py` supports both Gazebo Harmonic simulation and real hardware (`sim:=true/false`). |
 | `ranger_xarm6_moveit_config` | MoveIt 2 config: the base as `base_x/y/theta` joints (crab and spin never mixed), the arm, and `whole_body`. |
 | `ranger_xarm6_manipulation` | MoveIt-based base + arm control (sequential or whole-body), `MoveToGoal` action. See its [README](ranger_xarm6_manipulation/README.md). |
-| `ranger_xarm6_navigation` | Odometry (EKF over wheel odometry + the Mid-360's IMU), FAST-LIO2 3D mapping with the front D435i's low obstacles, the 2D grid, and Nav2 (lidar + front D435i costmaps, collision monitor); a localizer is still to come. See its [README](ranger_xarm6_navigation/README.md). |
+| `ranger_xarm6_navigation` | Odometry (EKF over wheel odometry + the Mid-360's IMU), FAST-LIO2 3D mapping with the front D435i's low obstacles, the 2D grid, NDT scan-to-map localization against the 3D map, and Nav2 (lidar + front D435i costmaps, collision monitor). See its [README](ranger_xarm6_navigation/README.md). |
 | `ranger_xarm6_tasks` | Tasks as behavior trees (BehaviorTree.CPP v4), edited in Groot2 and watched live in klein-bt: taught waypoints and arm poses, steps over Nav2, MoveIt and the gripper, run by name. See its [README](ranger_xarm6_tasks/README.md). |
 | `BehaviorTree.ROS2` (submodule, `humble` branch) | BehaviorTree.CPP's ROS 2 layer: the task server (`TreeExecutionServer`, `ExecuteTree` action). |
 | `ranger_mini_v3_description` | Vendored — missing from upstream `ranger_ros2` for ROS 2 Humble at the time this was ported. |
@@ -21,6 +21,8 @@ Application code (e.g. [wbcc_mm](https://github.com/artc-asr/whole_body_complian
 | `gz_ros2_control` (submodule, `humble` branch) | Built from source with `GZ_VERSION=harmonic` (see below) — the `ros-humble-gz-ros2-control` **apt** package is built against Fortress (`libignition-gazebo6`) regardless of what's installed locally, so on a Harmonic system its plugin exports the wrong ABI symbol (`IgnitionPluginHook` instead of `GzPluginHook`) and Gazebo silently fails to load it, which cascades into `controller_manager` never starting and `joint_state_broadcaster`/`arm_velocity_controller` never spawning. Building this submodule locally (the main `colcon build` below already does, since `GZ_VERSION=harmonic` is exported first) overlays a correctly-linked version. |
 | `Livox-SDK2` (submodule) | Livox's low-level lidar SDK (Mid-360 support). No apt package exists; built from source to a **user-writable prefix** (`$HOME/.local`, not `/usr/local` via `sudo make install` as Livox's own README suggests) — see below. |
 | `FAST_LIO` (submodule, `ROS2` branch) | FAST-LIO2 lidar-inertial odometry/mapping (hku-mars), used by `ranger_xarm6_navigation`'s mapping. Has its own `ikd-Tree` submodule (`--recurse-submodules` fetches it). |
+| `lidar_localization_ros2` (submodule) | NDT scan-to-map localization (rsasaki0109), `ranger_xarm6_navigation`'s `localization:=ndt`: only its NDT core is used (no IMU preintegration or smoother). |
+| `ndt_omp_ros2` (submodule, `humble` branch) | Multithreaded NDT for `lidar_localization_ros2`. |
 | `livox_ros_driver2` (submodule) | ROS 2 driver for the Mid-360, built against `Livox-SDK2` above. Its `package.xml` is intentionally **not** committed upstream (gitignored in that submodule, since the same source tree serves both ROS1 and ROS2 via templated `package_ROS1.xml`/`package_ROS2.xml`) — regenerate it after every fresh clone, see below. |
 
 ## Installation
@@ -133,8 +135,6 @@ ros2 launch ranger_xarm6_description ranger_xarm6.launch.py \
   MoveIt each bring their own, so add `run_rviz:=false` for those.
 - `x y yaw` is the spawn pose: `0.94 4.35 -1.5708` is the robot's home
   spot in `artc_lab` (the maps in this guide assume it).
-- **Random obstacles** for collision-avoidance tests: add
-  `random_obstacles:=5` (and `obstacle_seed:=7` to get the same layout
 - **The base drives on its wheels** (`base_drive:=physics`, the default):
   `ranger_sim_base.py` turns `cmd_vel` into the 4 steering angles and
   wheel speeds (`gz_ros2_control`), with the real driver's motion modes:
@@ -144,6 +144,8 @@ ros2 launch ranger_xarm6_description ranger_xarm6.launch.py \
   walls; `odom` is wheel odometry from what the wheels did, and TF
   `odom -> base_link` is Gazebo's true pose. `base_drive:=kinematic` is
   the old base, teleported exactly along `cmd_vel` (`base_pose_publisher.py`).
+- **Random obstacles** for collision-avoidance tests: add
+  `random_obstacles:=5` (and `obstacle_seed:=7` to get the same layout
   again; the seed used is printed in this terminal). They go in the
   room's open area (the red area of `world_plan_view.png`), so they're not
   in the map, and they're drawn in RViz. Re-roll or remove them any time:

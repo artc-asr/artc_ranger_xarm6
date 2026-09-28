@@ -32,6 +32,7 @@ install(PROGRAMS
   scripts/depth_mapper.py
   scripts/ekf_inputs.py
   scripts/pcd_to_grid.py
+  scripts/pcd_to_map_frame.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -14,7 +14,9 @@ localization (`map -> odom`).
 | `launch/mapping.launch.py` | FAST-LIO2 mapping session on the Mid-360 + its IMU; `map_save` writes the 3D map (`.pcd`), `depth_mapper.py` the front D435i's low obstacles (`<map>_depth.pcd`). |
 | `scripts/depth_mapper.py` | The front depth cloud, placed with FAST-LIO's pose, cut to a height band against the floor under the robot. |
 | `scripts/pcd_to_grid.py` | The `.pcd` map (+ `<map>_depth.pcd`) -> a 2D occupancy grid (map_server `.pgm` + `.yaml`). |
-| `launch/navigation.launch.py` | Nav2 on that grid: NavFn, RotationShim + Regulated Pure Pursuit, lidar + front depth voxel costmaps, velocity smoother, collision monitor. |
+| `scripts/pcd_to_map_frame.py` | The `.pcd` map moved into the map frame (the grid's `--origin`), for the localizer. |
+| `launch/navigation.launch.py` | Nav2 on that grid: NavFn, RotationShim + Regulated Pure Pursuit, lidar + front depth voxel costmaps, velocity smoother, collision monitor; `localization:=ndt` adds the localizer. |
+| `config/localization.yaml` | The localizer: `lidar_localization_ros2` (submodule, with `ndt_omp_ros2`), NDT scan-to-map, publishing `map -> odom`. |
 | `src/cloud_self_filter.cpp` | The lidar cloud without the robot (arm), for the collision monitor. |
 | `src/obstacle_memory.cpp` | What the front camera has seen, kept after it's out of view, for the collision monitor and the costmaps. |
 | `launch/front_depth.launch.py` | `depth_to_cloud` for the front D435i; included by mapping and navigation. |
@@ -169,6 +171,58 @@ recorded, so the lidar's 0.15 m floor doesn't apply to them. The artc_lab grid (
 cupboard and the plant, median 0 cm from the world file's surfaces; 5% of
 cells fatten edges by 10-20 cm, none stray into the free space.
 
+## Localization (NDT scan-to-map)
+
+The Mid-360's cloud matched against the FAST-LIO map
+([lidar_localization_ros2](https://github.com/rsasaki0109/lidar_localization_ros2),
+NDT), about 8 times a second: it publishes `map -> odom`, correcting the
+EKF's drift, the way AMCL would on a 2D map. Once per map, the `.pcd` in
+the map frame (the same `--origin` as the grid, so the two line up):
+
+```bash
+ros2 run ranger_xarm6_navigation pcd_to_map_frame.py ~/ranger_xarm6_maps/artc_lab.pcd \
+  --origin 0.917 4.177 0.793 1.5708          # -> artc_lab_map_frame.pcd (5 cm voxels)
+```
+
+Then the robot with its own odom TF off, the EKF, and Nav2 with the
+localizer:
+
+```bash
+ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false publish_odom_tf:=false \
+  world:=artc_lab.world x:=0.94 y:=4.35 yaw:=-1.5708
+ros2 launch ranger_xarm6_navigation odometry.launch.py x:=0.94 y:=4.35 yaw:=-1.5708
+ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_maps/artc_lab.yaml \
+  localization:=ndt initial_pose:="0.94 4.35 -90"
+```
+
+- `initial_pose:="x y yaw_deg"` (map frame) is where it starts matching;
+  without it, give it with RViz's **2D Pose Estimate**. NDT only refines
+  a nearby guess: within a few tens of cm and degrees.
+- It uses `livox/lidar_self_filtered` (the arm removed, see below), the
+  EKF's `odom -> base_link` to predict between matches, and
+  `<map>_map_frame.pcd` next to the grid (`localization_map:=` for
+  another). A match scoring worse than `score_threshold` (NDT fitness,
+  `config/localization.yaml`) is rejected and `map -> odom` held.
+- Status: `pcl_pose` (the matched pose), `alignment_status`.
+
+Sim (artc_lab, physics base, Nav2 driving spawn -> north-east table ->
+south table -> home, sampled twice a second against Gazebo's true pose,
+two runs): NDT mean 3.2 cm, max 6.3-7.8 cm, yaw mean 1.0 deg, max 4-5
+deg; the EKF alone (no localizer) drifted to 20-22 cm / 0.8-1.3 deg by
+the end. Two of the six Nav2 goals ended aborted near the goal (the
+Ranger's 0.476 m minimum turn radius, see Navigation below), with the
+robot still localized to 3 cm. Part of NDT's error is
+the map's own: the FAST-LIO map sits ~4 cm / 0.6 deg off the world at
+the start pose.
+
+**Frames**: with a localizer, only the map frame is the room: `odom`
+drifts. The task layer's arm poses (`config/arm_poses.yaml`, frame
+`robot_a_odom`) and the sim's MoveIt collision objects (the world file's
+models, placed in odom) assume `odom` is the room, which holds only with
+the default identity (`localization:=static` and the ground-truth TF).
+With the EKF + NDT they're off by the EKF's drift until they move to the
+map frame: not done yet.
+
 ## Navigation (Nav2)
 
 ```bash
@@ -190,9 +244,10 @@ there (x -0.53..0.38, y +-0.27 m around base_link; the gripper reaches
 front camera's topics default to realsense2_camera's
 (`front_depth_image`/`front_depth_info` override them).
 
-- **map -> odom**: no localizer yet; `static_map_to_odom:=true` (default)
-  publishes an identity, right in sim (odom = Gazebo world = the grid's
-  frame). Odometry drift isn't corrected, so not for real hardware.
+- **map -> odom**: `localization:=static` (default) publishes an identity,
+  right in sim with the ground-truth TF (odom = Gazebo world = the grid's
+  frame); odometry drift isn't corrected. `localization:=ndt`: the
+  localizer (above), for the EKF and real hardware.
 - **Base motion**: RotationShim spins in place to within 45 deg of the
   path, Regulated Pure Pursuit follows it forward (no reversing), then a
   spin to the goal heading. vy is always 0: Nav2 never crabs; the final

@@ -19,6 +19,10 @@ alike: ranger_xarm6_description's sim publishes the same formats):
       IMU biases, and the EKF trusts the gyro over the wheels for
       heading, so an uncorrected bias turns heading while parked or
       crabbing (~0.002 rad/s in sim, from the sim IMU's turn-on bias).
+      Only while the gyro agrees (within still_gyro of the bias): the
+      wheels also read zero while the base still turns, skidding or
+      pushed (in sim, re-steering out of a spin), and learning that
+      rotation as bias turned the EKF's heading ~50 deg in one Nav2 run.
     - restamp: stamp with this node's clock instead. The Mid-360 stamps
       with its own clock unless it's time-synced (PTP/gPTP), so on real
       hardware without sync its stamps aren't ROS time.
@@ -69,6 +73,7 @@ class EkfInputs(Node):
         self.still_velocity = self.declare_parameter('still_velocity', 1e-3).value
         self.still_settle_time = self.declare_parameter('still_settle_time', 0.5).value
         self.bias_tau = self.declare_parameter('gyro_bias_time_constant', 2.0).value
+        self.still_gyro = self.declare_parameter('still_gyro', 0.01).value  # [rad/s] from the bias: still
         self.gyro_bias = [0.0, 0.0, 0.0]
         self._still_since = None   # wheel-odom stamp [s] the robot stopped at
         self._still = False
@@ -86,7 +91,8 @@ class EkfInputs(Node):
         gyro = msg.angular_velocity
         raw = (gyro.x, gyro.y, gyro.z)
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-        if self._still and self._last_imu_stamp is not None and stamp > self._last_imu_stamp:
+        agrees = max(abs(r - b) for r, b in zip(raw, self.gyro_bias)) < self.still_gyro
+        if self._still and agrees and self._last_imu_stamp is not None and stamp > self._last_imu_stamp:
             k = 1.0 - math.exp(-(stamp - self._last_imu_stamp) / self.bias_tau)
             self.gyro_bias = [b + k * (r - b) for b, r in zip(self.gyro_bias, raw)]
         self._last_imu_stamp = stamp
