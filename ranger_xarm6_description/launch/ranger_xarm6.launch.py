@@ -316,6 +316,12 @@ def launch_setup(context, *args, **kwargs):
     # ground truth; real: the Ranger driver's wheel odometry). Off when
     # something else owns it, e.g. ranger_xarm6_navigation's EKF.
     publish_odom_tf = LaunchConfiguration('publish_odom_tf').perform(context).lower() in ('true', '1', 'yes')
+    # Sim only: 'physics' (the wheels drive the base: ranger_sim_base.py)
+    # or 'kinematic' (base_pose_publisher.py teleports it). Without Gazebo
+    # there are no wheels to drive: kinematic.
+    base_drive = LaunchConfiguration('base_drive').perform(context)
+    if base_drive not in ('physics', 'kinematic'):
+        raise ValueError(f"base_drive must be 'physics' or 'kinematic', got {base_drive!r}")
     robot_id = LaunchConfiguration('robot_id').perform(context)
     robot_ip = LaunchConfiguration('robot_ip').perform(context)
     # Bare file name -> this package's worlds/ dir; anything with a '/' is
@@ -342,7 +348,7 @@ def launch_setup(context, *args, **kwargs):
         ros2_control_params=ros2_control_params,
     )
     if sim and gazebo:
-        xacro_kwargs.update(ros2_control_plugin='gz_ros2_control/GazeboSimSystem')
+        xacro_kwargs.update(ros2_control_plugin='gz_ros2_control/GazeboSimSystem', sim_base_drive=base_drive)
     elif sim:
         # No physics running (see 'gazebo' arg) -- explicitly override to
         # something other than the xacro's own default (which IS
@@ -458,33 +464,66 @@ def launch_setup(context, *args, **kwargs):
         # every tick via update_robot_state() and silently no-ops if it's
         # missing -- without this node, bringup.launch.py would spin but
         # the WBC state machine would never advance.
-        odom_tf_publisher = Node(
-            package='ranger_xarm6_description',
-            executable='base_pose_publisher.py',
-            namespace=robot_id,
-            parameters=[{
-                'x': float(LaunchConfiguration('x').perform(context)),
-                'y': float(LaunchConfiguration('y').perform(context)),
-                'z': float(LaunchConfiguration('z').perform(context)),
-                'yaw': float(LaunchConfiguration('yaw').perform(context)),
-                'frame_id': f'{prefix}odom',
-                'child_frame_id': f'{prefix}base_link',
-                'publish_tf': publish_odom_tf,
-                # Must match spawn_entity_node's '-name' below so this
-                # node's gz-transport teleport calls (see
-                # base_pose_publisher.py) hit the right entity.
-                'gz_entity_name': robot_id or 'ranger_xarm6',
-                'gz_world': gz_world_name,
-                # x clamp keeping the kinematic base out of tested_world's
-                # contact wall (see max_x in base_pose_publisher.py);
-                # meaningless elsewhere. Nothing stops the base driving
-                # into other worlds' furniture: it's a teleport, not
-                # physics.
-                'max_x': 2.6 if os.path.basename(world_path) == 'tested_world.world' else 1e6,
-                'use_sim_time': gazebo,
-            }],
-            output='screen',
-        )
+        if gazebo and base_drive == 'physics':
+            # The wheels drive the base (steering_position_controller +
+            # wheel_velocity_controller, commanded from cmd_vel with the
+            # real driver's motion modes); odom -> base_link TF and
+            # ground_truth/odom from Gazebo's true motion, wheel odometry
+            # from the wheels. See ranger_sim_base.py.
+            controller_spawners.append(Node(
+                package='controller_manager',
+                executable='spawner',
+                namespace=robot_id,
+                output='screen',
+                arguments=['steering_position_controller', 'wheel_velocity_controller'],
+                parameters=[{'use_sim_time': sim}],
+            ))
+            odom_tf_publisher = Node(
+                package='ranger_xarm6_description',
+                executable='ranger_sim_base.py',
+                namespace=robot_id,
+                parameters=[{
+                    'x': float(LaunchConfiguration('x').perform(context)),
+                    'y': float(LaunchConfiguration('y').perform(context)),
+                    'yaw': float(LaunchConfiguration('yaw').perform(context)),
+                    'joint_prefix': prefix,
+                    'frame_id': f'{prefix}odom',
+                    'child_frame_id': f'{prefix}base_link',
+                    'publish_tf': publish_odom_tf,
+                    'gz_entity_name': robot_id or 'ranger_xarm6',
+                    'gz_world': gz_world_name,
+                    'use_sim_time': True,
+                }],
+                output='screen',
+            )
+        else:
+            odom_tf_publisher = Node(
+                package='ranger_xarm6_description',
+                executable='base_pose_publisher.py',
+                namespace=robot_id,
+                parameters=[{
+                    'x': float(LaunchConfiguration('x').perform(context)),
+                    'y': float(LaunchConfiguration('y').perform(context)),
+                    'z': float(LaunchConfiguration('z').perform(context)),
+                    'yaw': float(LaunchConfiguration('yaw').perform(context)),
+                    'frame_id': f'{prefix}odom',
+                    'child_frame_id': f'{prefix}base_link',
+                    'publish_tf': publish_odom_tf,
+                    # Must match spawn_entity_node's '-name' below so this
+                    # node's gz-transport teleport calls (see
+                    # base_pose_publisher.py) hit the right entity.
+                    'gz_entity_name': robot_id or 'ranger_xarm6',
+                    'gz_world': gz_world_name,
+                    # x clamp keeping the kinematic base out of tested_world's
+                    # contact wall (see max_x in base_pose_publisher.py);
+                    # meaningless elsewhere. Nothing stops the base driving
+                    # into other worlds' furniture: it's a teleport, not
+                    # physics.
+                    'max_x': 2.6 if os.path.basename(world_path) == 'tested_world.world' else 1e6,
+                    'use_sim_time': gazebo,
+                }],
+                output='screen',
+            )
         # The world's models (walls, tables, cubes, ...) as RViz markers:
         # RViz can't see inside gz-sim, so this mirrors the same .world
         # file, following non-static models live (see world_markers.py).
@@ -1012,6 +1051,7 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_hipnuc_imu', default_value='true', description='Bridge the gz-sim IMU sensor for the HiPNUC HI14R3-232-000 (mounted on extras_link). Sim only for now -- real hardware driver not wired yet.'),
         DeclareLaunchArgument('random_obstacles', default_value='0', description="Sim, artc_lab only: spawn this many random small boxes in the room's open area (spawn_obstacles.py), for collision avoidance tests"),
         DeclareLaunchArgument('obstacle_seed', default_value='-1', description='Seed for random_obstacles; -1 = a new layout every launch (the seed used is printed)'),
+        DeclareLaunchArgument('base_drive', default_value='physics', description="Sim + Gazebo only: 'physics' = gz_ros2_control drives the steering joints and wheels from cmd_vel (ranger_sim_base.py, the real driver's motion modes); 'kinematic' = the base is teleported along cmd_vel (base_pose_publisher.py)"),
         DeclareLaunchArgument('publish_odom_tf', default_value='true', description='Publish odom -> base_link from the base (sim: ground truth, real: Ranger wheel odometry). false when ranger_xarm6_navigation odometry.launch.py (EKF) owns it.'),
         DeclareLaunchArgument('enable_livox_lidar', default_value='true', description='Bridge the gz-sim gpu_lidar sensor (sim) or launch livox_ros_driver2 directly (sim:=false) for the Livox Mid-360 (mounted on extras_link).'),
         OpaqueFunction(function=launch_setup),

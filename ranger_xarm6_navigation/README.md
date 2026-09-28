@@ -44,14 +44,16 @@ Not used:
   mask for the parked arm's patch in `depth_to_cloud` (recorded on the
   real camera: the sim doesn't reproduce stereo noise).
 - **The arm's Gemini**: it moves with the arm.
-- **HiPNUC IMU**: no real driver wired yet (and its sim is a Gazebo IMU on
-  the teleported base, the flaw `sim_livox_imu.py` avoids). It's the
+- **HiPNUC IMU**: no real driver wired yet (its sim is a Gazebo IMU, which
+  was wrong on the old teleported base, `base_drive:=kinematic`: the flaw
+  `sim_livox_imu.py` avoids). It's the
   better gyro; once its driver is in, it can replace or join the
   Mid-360's in the EKF. The D435i's IMUs add nothing over these.
 
 In sim, `ranger_xarm6_description` publishes the same topics in the same
-formats (`sim_livox_imu.py`, `base_pose_publisher.py`,
-`gz_lidar_to_pointcloud.py`, the depth camera), plus `ground_truth/odom`.
+formats (`sim_livox_imu.py`, `ranger_sim_base.py`'s wheel odometry from
+the simulated wheels, `gz_lidar_to_pointcloud.py`, the depth camera),
+plus `ground_truth/odom`.
 
 ## Odometry (EKF)
 

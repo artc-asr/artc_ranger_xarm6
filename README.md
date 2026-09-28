@@ -135,6 +135,15 @@ ros2 launch ranger_xarm6_description ranger_xarm6.launch.py \
   spot in `artc_lab` (the maps in this guide assume it).
 - **Random obstacles** for collision-avoidance tests: add
   `random_obstacles:=5` (and `obstacle_seed:=7` to get the same layout
+- **The base drives on its wheels** (`base_drive:=physics`, the default):
+  `ranger_sim_base.py` turns `cmd_vel` into the 4 steering angles and
+  wheel speeds (`gz_ros2_control`), with the real driver's motion modes:
+  crab when `linear.y` isn't 0, spin in place when the turn radius is
+  under 0.476 m (`linear.x` is then ignored, as on the robot), dual
+  Ackermann otherwise. So it slips, steers before it drives, and stops at
+  walls; `odom` is wheel odometry from what the wheels did, and TF
+  `odom -> base_link` is Gazebo's true pose. `base_drive:=kinematic` is
+  the old base, teleported exactly along `cmd_vel` (`base_pose_publisher.py`).
   again; the seed used is printed in this terminal). They go in the
   room's open area (the red area of `world_plan_view.png`), so they're not
   in the map, and they're drawn in RViz. Re-roll or remove them any time:

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Simulated Mid-360 built-in IMU, published the way livox_ros_driver2 does.
 
-Computed from the base's ground-truth motion ('ground_truth/odom' from
-base_pose_publisher.py), not by a Gazebo IMU sensor. The base is
-kinematic (teleported), so the Gazebo chassis's own physics motion isn't
+Computed from the base's ground-truth motion ('ground_truth/odom': from
+ranger_sim_base.py, Gazebo's true motion; or base_pose_publisher.py),
+not by a Gazebo IMU sensor. That was needed for the kinematic
+(teleported) base, base_drive:=kinematic: the Gazebo chassis's own physics motion isn't
 the robot's: between teleports it creeps (settling on its passive wheels,
 the steering joints relaxing), and the teleport that snaps it back carries
 no velocity. A Gazebo IMU senses only the creep, a one-sided rotation the

@@ -37,6 +37,14 @@ controller_manager:
     gripper_position_controller:
       type: position_controllers/JointGroupPositionController
 
+    # Sim only (sim_base_drive physics): the base's 4 steering joints and
+    # 4 wheels, commanded by ranger_sim_base.py from cmd_vel.
+    steering_position_controller:
+      type: position_controllers/JointGroupPositionController
+
+    wheel_velocity_controller:
+      type: velocity_controllers/JointGroupVelocityController
+
 arm_velocity_controller:
   ros__parameters:
     joints:
@@ -90,3 +98,25 @@ gripper_position_controller:
     joints:
       - drive_joint
     interface_name: position
+
+# Sim only: the Ranger base (ranger_sim_base.py publishes both, joint order
+# as listed: fl, fr, rl, rr). Steering in rad (the joint's axis is -z: a
+# positive angle turns the wheel clockwise seen from above), wheels in rad/s
+# (positive rolls forward along the wheel's heading).
+steering_position_controller:
+  ros__parameters:
+    joints:
+      - fl_steering_joint
+      - fr_steering_joint
+      - rl_steering_joint
+      - rr_steering_joint
+    interface_name: position
+
+wheel_velocity_controller:
+  ros__parameters:
+    joints:
+      - fl_wheel
+      - fr_wheel
+      - rl_wheel
+      - rr_wheel
+    interface_name: velocity
