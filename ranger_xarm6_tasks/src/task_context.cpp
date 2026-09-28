@@ -46,7 +46,7 @@ std::string TaskContext::load(const std::string& tasks_dir)
       {
         const auto& v = it.second;
         ArmPose p;
-        p.frame = v["frame"] ? v["frame"].as<std::string>() : odom_frame_;
+        p.frame = v["frame"] ? v["frame"].as<std::string>() : map_frame_;
         for(int i = 0; i < 3; ++i)
           p.position[i] = v["position"][i].as<double>();
         for(int i = 0; i < 4; ++i)

@@ -239,7 +239,7 @@ Angles in degrees. `pose`/`waypoint` names come from `config/`.
 | **BaseToPose** | MoveIt (crab/spin, precise; for docking) | `waypoint`, or `x`, `y`, `yaw_deg`, `frame`; `mode`; `collision_monitor` (auto) |
 | **TurnBase** | MoveIt spin in place | one of: `back_towards` (a waypoint or arm pose name: the arm side faces it), `yaw_deg` (absolute, map frame), `angle_deg` (relative, + = left); `mode`; `collision_monitor` (auto) |
 | **ArmToNamedPose** | MoveIt, arm only | `pose`: an SRDF named pose (`home`, `stow`, yours) |
-| **ArmToPose** | MoveIt, arm only | `pose` (taught), or `x`, `y`, `z`, `frame` (default odom; `robot_a_base_link` = relative to the base), `orientation` (`down`, `down:<deg>`, or `qx qy qz qw`); `offset_z` (e.g. `-0.07` to go down) |
+| **ArmToPose** | MoveIt, arm only | `pose` (taught), or `x`, `y`, `z`, `frame` (default map; `robot_a_base_link` = relative to the base), `orientation` (`down`, `down:<deg>`, or `qx qy qz qw`); `offset_z` (e.g. `-0.07` to go down) |
 | **WholeBodyToPose** | MoveIt, base + arm together | the `ArmToPose` ports + `base_waypoint` (where the base goes; empty = chosen at the current heading); `collision_monitor` (never) |
 | **Gripper** | `gripper_command` | `command`: `open`, `close`, or rad (0..0.85); `expect`: `any`, `holding` (fail if it closed on nothing), `empty` |
 | **Say** | log | `message` |
@@ -279,7 +279,7 @@ base partly under the tabletop).
 goal, or RViz's MotionPlanning drag + Execute; see the repo README), then
 
 ```bash
-ros2 run ranger_xarm6_tasks save_arm_pose.py above_bin                           # a place in the room (odom)
+ros2 run ranger_xarm6_tasks save_arm_pose.py above_bin                           # a place in the room (map)
 ros2 run ranger_xarm6_tasks save_arm_pose.py carry --frame robot_a_base_link     # relative to the base
 ```
 

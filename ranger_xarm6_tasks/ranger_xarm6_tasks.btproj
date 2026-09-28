@@ -12,7 +12,7 @@
         <Action ID="ArmToPose">
             <input_port name="offset_z" type="double" default="0.000000">added to z (e.g. 0.05 to hover above)</input_port>
             <input_port name="orientation" type="std::string" default="down">for x/y/z: down | down:&lt;deg&gt; | qx qy qz qw</input_port>
-            <input_port name="frame" type="std::string" default="">for x/y/z; default: odom. base_link = relative to where the base ends up</input_port>
+            <input_port name="frame" type="std::string" default="">for x/y/z; default: the map frame. base_link = relative to where the base ends up</input_port>
             <input_port name="z" type="double">m</input_port>
             <input_port name="velocity_scaling" type="double" default="0.000000">0..1; 0 = default (0.3)</input_port>
             <input_port name="y" type="double">m</input_port>
@@ -56,7 +56,7 @@
         <Action ID="WholeBodyToPose">
             <input_port name="offset_z" type="double" default="0.000000">added to z (e.g. 0.05 to hover above)</input_port>
             <input_port name="orientation" type="std::string" default="down">for x/y/z: down | down:&lt;deg&gt; | qx qy qz qw</input_port>
-            <input_port name="frame" type="std::string" default="">for x/y/z; default: odom. base_link = relative to where the base ends up</input_port>
+            <input_port name="frame" type="std::string" default="">for x/y/z; default: the map frame. base_link = relative to where the base ends up</input_port>
             <input_port name="z" type="double">m</input_port>
             <input_port name="velocity_scaling" type="double" default="0.000000">0..1; 0 = default (0.3)</input_port>
             <input_port name="y" type="double">m</input_port>

@@ -18,7 +18,8 @@ map -> odom, localization:=
   ndt: lidar_localization_ros2 (submodule) matches the Mid-360's cloud
     (without the arm) against the FAST-LIO map in the map frame
     (localization_map, default <map>_map_frame.pcd next to the grid, from
-    scripts/pcd_to_map_frame.py) and publishes map -> odom, correcting
+    scripts/pcd_to_map_frame.py) and publishes map -> odom (x, y, yaw:
+    scripts/planar_map_to_odom.py), correcting
     the EKF's drift (run odometry.launch.py, and the robot with
     publish_odom_tf:=false). Where it starts: initial_pose:="x y yaw_deg"
     in the map frame (in sim, the spawn pose), else RViz's 2D Pose
@@ -146,7 +147,14 @@ def launch_setup(context, *args, **kwargs):
                  # Its 'map' is a PointCloud2 topic (unused with a .pcd):
                  # not map_server's grid.
                  remappings=[('cloud', 'livox/lidar_self_filtered'), ('map', 'localization/map_cloud'),
-                             ('initial_map', 'localization/initial_map'), ('odom', 'odometry/filtered')],
+                             ('initial_map', 'localization/initial_map'), ('odom', 'odometry/filtered'),
+                             ('initialpose', 'localization/initialpose')],
+                 output='screen'),
+            # map -> odom from it, planar (see the script), and RViz's 2D
+            # Pose Estimate relayed to it.
+            Node(package='ranger_xarm6_navigation', executable='planar_map_to_odom.py', namespace=robot_id,
+                 parameters=[common, {'map_frame': f'{prefix}map', 'ndt_frame': f'{prefix}map_3d',
+                                      'odom_frame': f'{prefix}odom'}],
                  output='screen'),
             # It's a lifecycle node without Nav2's bond: its own manager,
             # bond off.

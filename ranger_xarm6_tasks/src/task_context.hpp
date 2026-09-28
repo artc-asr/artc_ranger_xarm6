@@ -24,7 +24,7 @@ struct Waypoint
 // A gripper (link_tcp) pose.
 struct ArmPose
 {
-  std::string frame;  // e.g. robot_a_odom, or robot_a_base_link (relative to where the base ends up)
+  std::string frame;  // e.g. robot_a_map, or robot_a_base_link (relative to where the base ends up)
   double position[3] = { 0, 0, 0 };
   double orientation[4] = { 0, 0, 0, 1 };  // x y z w
 };

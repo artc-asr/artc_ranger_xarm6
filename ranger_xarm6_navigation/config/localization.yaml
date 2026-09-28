@@ -9,7 +9,9 @@
 # continuous-time deskew (the sim's lidar cloud has no per-point times).
 lidar_localization:
   ros__parameters:
-    global_frame_id: robot_a_map
+    # Its own frame: planar_map_to_odom.py makes map -> odom from it, x, y
+    # and yaw only (its z, roll and pitch follow the map's height drift).
+    global_frame_id: robot_a_map_3d
     odom_frame_id: robot_a_odom
     base_frame_id: robot_a_base_link
 
@@ -34,6 +36,13 @@ lidar_localization:
     map_path: ""
 
     enable_map_odom_tf: true
+    # Re-stamp the last good map -> odom at 20 Hz (like AMCL's
+    # transform_tolerance), not only at each scan: Nav2 looks the robot up
+    # at the newest odom time, and a scan-stamped map -> odom lagging
+    # ~70 ms behind failed those lookups and aborted a goal.
+    enable_timer_publishing: true
+    pose_publish_frequency: 20.0
+    publish_bridge_pose_when_lost: true
     use_odom_tf_prediction: true
     use_odom: false
     use_twist_prediction: false

@@ -203,6 +203,14 @@ ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_map
   `<map>_map_frame.pcd` next to the grid (`localization_map:=` for
   another). A match scoring worse than `score_threshold` (NDT fitness,
   `config/localization.yaml`) is rejected and `map -> odom` held.
+- `map -> odom` is planar (x, y, yaw), like AMCL's: the localizer
+  matches in 6D and publishes `robot_a_map_3d -> odom`, whose z, roll and
+  pitch follow the FAST-LIO map's height drift (0.14 m / 2.2 deg seen,
+  which lifted and tilted every table in MoveIt); `planar_map_to_odom.py`
+  publishes `map -> robot_a_map_3d` so the chain comes out planar, and
+  relays RViz's 2D Pose Estimate to the localizer. The last good
+  correction is re-stamped at 20 Hz (Nav2 looks the robot up at the
+  newest odom time; a scan-stamped transform ~70 ms behind aborted goals).
 - Status: `pcl_pose` (the matched pose), `alignment_status`.
 
 Sim (artc_lab, physics base, Nav2 driving spawn -> north-east table ->
@@ -216,12 +224,19 @@ the map's own: the FAST-LIO map sits ~4 cm / 0.6 deg off the world at
 the start pose.
 
 **Frames**: with a localizer, only the map frame is the room: `odom`
-drifts. The task layer's arm poses (`config/arm_poses.yaml`, frame
-`robot_a_odom`) and the sim's MoveIt collision objects (the world file's
-models, placed in odom) assume `odom` is the room, which holds only with
-the default identity (`localization:=static` and the ground-truth TF).
-With the EKF + NDT they're off by the EKF's drift until they move to the
-map frame: not done yet.
+drifts. So the room's things are in `map`: the task layer's waypoints and
+arm poses (`ranger_xarm6_tasks`, resolved to odom when a goal starts), and
+in sim the world file's models, which `ranger_xarm6_description` sends to
+MoveIt (collision objects) and RViz (markers) in odom through the current
+`map -> odom`, smoothed (5 s) and resent when it moves 2 cm / 0.6 deg
+(NDT jitters ~2 cm scan to scan; resending the tables at every jitter
+invalidated a docking plan mid-motion). Without a map frame (no Nav2),
+map = odom.
+
+With EKF + NDT in sim, `DemoPickPlace` navigates and docks, but the grasp
+can miss: the open fingers leave ~1.7 cm around the 5 cm cube, and the
+example `above_cube_4` was typed in world coordinates while the map sits
+~4 cm off the world. Teach it with `save_arm_pose.py` while localized.
 
 ## Navigation (Nav2)
 

@@ -156,7 +156,7 @@ bool MoveToGoalNode::armPoseFromPorts(geometry_msgs::msg::PoseStamped& pose)
     p.position[1] = y.value();
     p.position[2] = z.value();
     const auto frame = getInput<std::string>("frame").value_or("");
-    p.frame = frame.empty() ? context_->odomFrame() : frame;
+    p.frame = frame.empty() ? context_->mapFrame() : frame;
     if(!parseOrientation(getInput<std::string>("orientation").value_or("down"), p.orientation))
     {
       RCLCPP_ERROR(kLog, "[%s] orientation: 'down', 'down:<deg>' or 'qx qy qz qw'", this->name().c_str());
@@ -291,7 +291,7 @@ BT::PortsList armPosePorts(BT::PortsList more)
   more.insert(BT::InputPort<double>("x", "m"));
   more.insert(BT::InputPort<double>("y", "m"));
   more.insert(BT::InputPort<double>("z", "m"));
-  more.insert(BT::InputPort<std::string>("frame", "", "for x/y/z; default: odom. base_link = "
+  more.insert(BT::InputPort<std::string>("frame", "", "for x/y/z; default: the map frame. base_link = "
                                                       "relative to where the base ends up"));
   more.insert(BT::InputPort<std::string>("orientation", "down",
                                          "for x/y/z: down | down:<deg> | qx qy qz qw"));
