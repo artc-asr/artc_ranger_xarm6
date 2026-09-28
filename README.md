@@ -13,6 +13,7 @@ Application code (e.g. [wbcc_mm](https://github.com/artc-asr/whole_body_complian
 | `ranger_xarm6_manipulation` | MoveIt-based base + arm control (sequential or whole-body), `MoveToGoal` action. See its [README](ranger_xarm6_manipulation/README.md). |
 | `ranger_xarm6_navigation` | Odometry (EKF over wheel odometry + the Mid-360's IMU), FAST-LIO2 3D mapping with the front D435i's low obstacles, the 2D grid, NDT scan-to-map localization against the 3D map, and Nav2 (lidar + front D435i costmaps, collision monitor). See its [README](ranger_xarm6_navigation/README.md). |
 | `ranger_xarm6_tasks` | Tasks as behavior trees (BehaviorTree.CPP v4), edited in Groot2 and watched live in klein-bt: taught waypoints and arm poses, steps over Nav2, MoveIt and the gripper, run by name. See its [README](ranger_xarm6_tasks/README.md). |
+| `ranger_xarm6_bringup` | The whole sim stack in one launch (`sim.launch.py`: robot, Nav2, MoveIt, tasks, started as each is ready), viewed in Foxglove and klein-bt. See its [README](ranger_xarm6_bringup/README.md). |
 | `BehaviorTree.ROS2` (submodule, `humble` branch) | BehaviorTree.CPP's ROS 2 layer: the task server (`TreeExecutionServer`, `ExecuteTree` action). |
 | `ranger_mini_v3_description` | Vendored — missing from upstream `ranger_ros2` for ROS 2 Humble at the time this was ported. |
 | `xarm_ros2` (submodule) | UFACTORY xArm6 description, ros2_control, and driver packages. |
@@ -120,6 +121,12 @@ after something crashed, run `fastdds shm clean`.
 
 After pulling changes, rebuild what changed, e.g.
 `colcon build --packages-select ranger_xarm6_description ranger_xarm6_navigation ranger_xarm6_manipulation ranger_xarm6_moveit_config`.
+
+**All at once**: `ros2 launch ranger_xarm6_bringup sim.launch.py` starts
+everything in sections 1-6 (robot, Nav2, MoveIt, tasks), with Foxglove
+and klein-bt instead of the RViz windows; see
+[ranger_xarm6_bringup](ranger_xarm6_bringup/README.md). The sections
+below start the pieces one terminal at a time.
 
 ### 1. Start the robot
 
