@@ -10,7 +10,7 @@ Or as buttons: --serve keeps it running with ROS services
 <ns>/obstacles/respawn and <ns>/obstacles/clear (std_srvs/Trigger; see
 serve()), which ranger_xarm6_bringup's sim.launch.py starts for Foxglove.
 
-The area is world_plan_view.png's red box (x 2.05-8.65, y 0.96-3.88), left
+The area is screenshots/world_plan_view.png's red box (x 2.05-8.65, y 0.96-3.88), left
 empty in artc_lab.world and so in the map: whatever lands there is only
 seen by the robot's sensors. Boxes are static, random in size (sides
 --min-side..--max-side, height --min-height..--max-height, so some are
@@ -34,7 +34,7 @@ from gz.msgs10.scene_pb2 import Scene
 from gz.msgs10.world_stats_pb2 import WorldStatistics
 from gz.transport13 import Node
 
-AREA = (2.05, 8.65, 0.96, 3.88)  # x0, x1, y0, y1 (world_plan_view.png, red)
+AREA = (2.05, 8.65, 0.96, 3.88)  # x0, x1, y0, y1 (screenshots/world_plan_view.png, red)
 COLOURS = [(0.9, 0.5, 0.1), (0.2, 0.6, 0.9), (0.8, 0.2, 0.6), (0.3, 0.7, 0.3), (0.9, 0.8, 0.2)]
 
 

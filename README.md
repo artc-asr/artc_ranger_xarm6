@@ -2,6 +2,10 @@
 
 Robot-platform packages for the **Ranger Mini 3.0 (AgileX / Weston Robot) + xArm6** mobile manipulator, built for ARTC. This repo holds the combined URDF/xacro description, Gazebo simulation bringup, and real-hardware bringup — everything needed to get the robot moving in sim or on real hardware, independent of any particular control algorithm.
 
+
+  <img src="screenshots/hero.gif" width="900" alt="Ranger Mini 3.0 + xArm6 in sim, viewed in Foxglove">
+
+
 Application code (e.g. [wbcc_mm](https://github.com/artc-asr/whole_body_compliance_control_mm), the whole-body compliance controller) lives in a separate repo and pulls this one in as a dependency, the same way this repo pulls in the vendor description/driver packages below.
 
 ## Contents
@@ -130,6 +134,8 @@ below start the pieces one terminal at a time.
 
 ### 1. Start the robot
 
+<img src="screenshots/world_plan_view.png" alt="App Screenshot" width="800">
+
 **Terminal 1** (keep it running for everything below):
 
 ```bash
@@ -154,7 +160,7 @@ ros2 launch ranger_xarm6_description ranger_xarm6.launch.py \
 - **Random obstacles** for collision-avoidance tests: add
   `random_obstacles:=5` (and `obstacle_seed:=7` to get the same layout
   again; the seed used is printed in this terminal). They go in the
-  room's open area (the red area of `world_plan_view.png`), so they're not
+  room's open area (the red area of `screenshots/world_plan_view.png`), so they're not
   in the map, and they're drawn in RViz. Re-roll or remove them any time:
 
   ```bash
@@ -446,6 +452,9 @@ Untested on hardware; the planning scene there has only the floor (no
 tables) until perception exists.
 
 ### 5. Gripper
+
+  <img src="screenshots/gripper_cube.png" width="500" alt="G2 gripper closed on a cube in Gazebo">
+
 
 ```bash
 ros2 run ranger_xarm6_manipulation gripper.py open

@@ -123,6 +123,10 @@ gravity-aligned). Outputs are under `fast_lio/` in the robot's namespace:
 
 ### How good is the map (sim, artc_lab)
 
+
+  <img src="../screenshots/map_pcd.png" width="49%" alt="FAST-LIO 3D map of artc_lab">
+  <img src="../screenshots/map_grid.png" width="49%" alt="2D grid for Nav2">
+
 26.6 m loop, crabs and spins, arm stowed, scored against the world file:
 
 | | |
@@ -213,6 +217,7 @@ ros2 launch ranger_xarm6_navigation navigation.launch.py map:=~/ranger_xarm6_map
   newest odom time; a scan-stamped transform ~70 ms behind aborted goals).
 - Status: `pcl_pose` (the matched pose), `alignment_status`.
 
+
 Sim (artc_lab, physics base, Nav2 driving spawn -> north-east table ->
 south table -> home, sampled twice a second against Gazebo's true pose,
 two runs): NDT mean 3.2 cm, max 6.3-7.8 cm, yaw mean 1.0 deg, max 4-5
@@ -239,6 +244,9 @@ example `above_cube_4` was typed in world coordinates while the map sits
 ~4 cm off the world. Teach it with `save_arm_pose.py` while localized.
 
 ## Navigation (Nav2)
+
+  <img src="../screenshots/nav2_obstacles.png" width="800" alt="Nav2 planning around random obstacles">
+
 
 ```bash
 ros2 launch ranger_xarm6_description ranger_xarm6.launch.py run_rviz:=false \

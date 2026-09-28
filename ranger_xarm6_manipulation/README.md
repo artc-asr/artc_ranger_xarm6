@@ -46,6 +46,15 @@ each so the wheels can re-steer.
   only the arm moves).
 - **DEFAULT** (`mode: 0`): whichever `control.launch.py` was started with.
 
+<!-- SCREENSHOT: the two modes side by side, ideally two short GIFs of the same goal: SEQUENTIAL (arm stowed while the base crabs, then the arm moves) and WHOLE_BODY (base and arm moving together).
+     Save as: screenshots/mode_sequential.gif + screenshots/mode_whole_body.gif
+     Then replace this comment with:
+     <p>
+       <img src="../screenshots/mode_sequential.gif" width="49%" alt="SEQUENTIAL: arm stowed, then base, then arm">
+       <img src="../screenshots/mode_whole_body.gif" width="49%" alt="WHOLE_BODY: base and arm together">
+     </p>
+-->
+
 ## Run (sim)
 
 Terminal 1, the robot (its own RViz off, MoveIt brings one):

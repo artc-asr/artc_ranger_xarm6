@@ -129,6 +129,8 @@ a sim grasp that holds (finger friction, or attaching the cube on grasp)
 is separate work.
 
 ## 4. Edit tasks in Groot2
+  <img src="../screenshots/groot2_editor.png" width="800" alt="Groot2 editing DemoPickPlace">
+
 
 Two tools, one job each: **Groot2 edits** the trees (the XML files in
 `trees/`), **klein-bt watches** them run (5.). klein-bt can't edit; Groot2's
@@ -201,6 +203,9 @@ Waypoint and arm pose names used in the ports (`table_ne_stage`,
 ## 5. Watch a task live (klein-bt)
 
 klein-bt only views: edit and create trees in Groot2 (4.).
+
+  <img src="../screenshots/klein_bt_task.png" width="800" alt="klein-bt watching DemoPickPlace">
+
 
 ```bash
 klein-bt                  # dashboard at http://localhost:8080, opens the browser

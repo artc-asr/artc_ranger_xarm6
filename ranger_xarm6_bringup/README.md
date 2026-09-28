@@ -54,6 +54,11 @@ launch says so and runs the rest.
 - the **log**, filtered to the task layer, Nav2's navigator, MoveIt's
   coordinator and the obstacle spawner.
 
+
+  <img src="../screenshots/foxglove_layout.png" width="800" alt="The Foxglove layout: 3D view, cameras, obstacle buttons, log">
+  <img src="../screenshots/foxglove_obstacle_buttons.png" width="500" alt="Obstacle buttons and their reply">
+
+
 Not checked here: the Foxglove GUI itself couldn't be opened where this
 was written (the bridge, launch and topics were); adjust the layout in
 the app and export it over the file if you change it.
