@@ -209,16 +209,15 @@
     <origin xyz="0 0 0" rpy="0 0 0" />
   </joint>
 
-  <!-- F/T sensor measurement frame: centre of the RFT60 sensing body
-       (spans 19mm-37.5mm above the seating face in the STEP, so
-       28.25mm), where its strain-gauge element sits. Neither the
-       UFACTORY manual (V2.2.0) nor xarm_api documents the real
-       sensor's reference point, so this is the physical-centre
-       assumption: a few mm error here only shifts torque by
-       (error x lateral force), force is unaffected. Axes parallel to
-       link6/link_eef (+Z out toward the tool).
+  <!-- F/T sensor measurement frame: the sensor's tool-side end face
+       (58.6mm above the seating face, the same face camera_mount_link
+       bolts to), on the sensor axis. UFACTORY support confirmed
+       (2026-10) that the real sensor's reference frame is at the end
+       of the sensor, not the middle of the sensing body (previously
+       assumed here, 28.25mm). Axes parallel to link6/link_eef (+Z out
+       toward the tool).
        ranger_xarm6.launch.py's ft_sensor_frame_z hardcodes this same
-       0.02825 (link6 -> link_eef -> ft_sensor_link are all zero
+       0.0586 (link6 -> link_eef -> ft_sensor_link are all zero
        offsets) for fix_wrench_frame_id.py, which shifts the sim wrench
        (measured at joint6, see force_torque_sensor below) to this
        frame: keep the two in sync. -->
@@ -226,7 +225,7 @@
   <joint name="$(arg prefix)ft_sensor_frame_joint" type="fixed">
     <parent link="$(arg prefix)ft_sensor_link" />
     <child link="$(arg prefix)ft_sensor_frame" />
-    <origin xyz="0 0 0.02825" rpy="0 0 0" />
+    <origin xyz="0 0 0.0586" rpy="0 0 0" />
   </joint>
 
   <!-- Camera mount: exactly d435i_urdf's own link_eef body (same mesh,
@@ -1427,8 +1426,8 @@
        about the joint's origin regardless of <frame> choice): correct
        for real force-controlled tasks (net wrench felt at the wrist).
        fix_wrench_frame_id.py (below) then shifts the torque to
-       ft_sensor_frame (tau - r x F, r = 28.25mm along link6's +Z), so
-       the published wrench is expressed at the sensor's own centre.
+       ft_sensor_frame (tau - r x F, r = 58.6mm along link6's +Z), so
+       the published wrench is expressed at the sensor's tool-side end.
        Remaining difference from a real sensor: joint6 also carries the
        sensor's own arm-side half (a few N of constant offset, which a
        real sensor's tare removes anyway).

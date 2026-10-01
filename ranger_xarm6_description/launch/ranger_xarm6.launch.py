@@ -636,7 +636,7 @@ def launch_setup(context, *args, **kwargs):
         ft_frame_id = f'{prefix}ft_sensor_frame'
         # joint6 -> ft_sensor_frame, along link6's +Z. Must match
         # ft_sensor_frame_joint's origin in ranger_xarm6.urdf.xacro.
-        ft_sensor_frame_z = 0.02825
+        ft_sensor_frame_z = 0.0586
         ft_bridge = Node(
             package='ros_gz_bridge',
             executable='parameter_bridge',
@@ -818,7 +818,25 @@ def launch_setup(context, *args, **kwargs):
             # across sim/real -- confirm this topic actually publishes
             # (`ros2 topic echo <ns>/force_torque`) before trusting force
             # control against real hardware.
-            ('uf_ftsensor_ext_states', 'force_torque'),
+            # Routed through 'force_torque_raw' + fix_wrench_frame_id.py, as
+            # in sim: xarm_api stamps it with a non-TF frame_id
+            # ("uf_ft_sensor_ext_data").
+            ('uf_ftsensor_ext_states', 'force_torque_raw'),
+        ],
+        output='screen',
+    )
+
+    # The sensor already reports at its own reference point (the
+    # tool-side end, per UFACTORY support, which is ft_sensor_frame), so
+    # only the frame_id is swapped here: offset 0, no torque shift.
+    ft_frame_fixup = Node(
+        package='ranger_xarm6_description',
+        executable='fix_wrench_frame_id.py',
+        arguments=[
+            f'/{robot_id}/force_torque_raw' if robot_id else '/force_torque_raw',
+            f'/{robot_id}/force_torque' if robot_id else '/force_torque',
+            f'{prefix}ft_sensor_frame',
+            '0.0',
         ],
         output='screen',
     )
@@ -1012,6 +1030,7 @@ def launch_setup(context, *args, **kwargs):
     return [
         robot_state_publisher_node,
         ros2_control_node,
+        ft_frame_fixup,
         ranger_driver_launch,
         *fixed_camera_launches,
         *usb_camera_launches,
