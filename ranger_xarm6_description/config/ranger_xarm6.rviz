@@ -326,10 +326,10 @@ Visualization Manager:
       Value: false
 
     # F/T sensor wrench (see force_torque_sensor in ranger_xarm6.urdf.xacro).
-    # Sim: measured at joint6, shifted to ft_sensor_frame (centre of the
-    # sensor body) by scripts/fix_wrench_frame_id.py. Real hardware: xarm_api's topic
-    # carries a non-TF frame_id ("uf_ft_sensor_ext_data"), so this display
-    # won't resolve there until that's republished too.
+    # Sim: measured at joint6, shifted to ft_sensor_frame (tool-side end
+    # face of the sensor) by scripts/fix_wrench_frame_id.py. Real hardware: the
+    # sensor reports there already; the same script just swaps xarm_api's
+    # non-TF frame_id ("uf_ft_sensor_ext_data") for ft_sensor_frame.
     # Arrow scales sized for the at-rest reading (~13N gravity load,
     # ~0.05Nm torque): 0.01 m/N and 0.5 m/Nm.
     - Class: rviz_default_plugins/Wrench

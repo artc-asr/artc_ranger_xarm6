@@ -20,6 +20,10 @@ joint), so its torque is resolved about joint6's origin. OFFSET_Z moves
 it to FRAME_ID, which must be parallel to joint6's frame and OFFSET_Z
 metres along its +Z (ft_sensor_frame in ranger_xarm6.urdf.xacro):
 tau' = tau - r x F with r = (0, 0, OFFSET_Z). Force is unchanged.
+
+Also used on real hardware, with OFFSET_Z 0: xarm_api's F/T topic is
+already at the sensor's reference point but stamped with a non-TF
+frame_id ("uf_ft_sensor_ext_data").
 """
 import sys
 
